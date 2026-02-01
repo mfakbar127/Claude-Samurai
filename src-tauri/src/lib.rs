@@ -186,6 +186,7 @@ pub fn run() {
             check_mcp_server_exists,
             get_mcp_enabled_state,
             toggle_mcp_server_state,
+            get_mcp_servers_with_state,
             read_claude_projects,
             read_claude_config_file,
             write_claude_config_file,

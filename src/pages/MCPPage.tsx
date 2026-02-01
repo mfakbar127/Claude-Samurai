@@ -30,11 +30,10 @@ import {
 } from "@/components/ui/dialog";
 import { builtInMcpServers } from "@/lib/builtInMCP";
 import {
-	type McpServer,
+	type McpServerState,
 	useAddGlobalMcpServer,
 	useDeleteGlobalMcpServer,
-	useGetMcpEnabledState,
-	useGlobalMcpServers,
+	useGetMcpServersWithState,
 	useToggleMcpServer,
 	useUpdateGlobalMcpServer,
 } from "@/lib/query";
@@ -42,8 +41,7 @@ import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 
 function MCPPageContent() {
 	const { t } = useTranslation();
-	const { data: mcpServers } = useGlobalMcpServers();
-	const { data: mcpEnabledState } = useGetMcpEnabledState();
+	const { data: mcpServersWithState } = useGetMcpServersWithState();
 	const updateMcpServer = useUpdateGlobalMcpServer();
 	const deleteMcpServer = useDeleteGlobalMcpServer();
 	const toggleMcpServer = useToggleMcpServer();
@@ -53,24 +51,39 @@ function MCPPageContent() {
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
 
-	// Helper function to determine if a server is enabled
-	const isServerEnabled = (serverName: string): boolean => {
-		// If in enabledMcpjsonServers, it's explicitly enabled
-		if (mcpEnabledState.enabledMcpjsonServers.includes(serverName)) {
-			return true;
+	// Helper functions for badge display
+	const getBadgeVariant = (state: string) => {
+		switch (state) {
+			case "enabled":
+				return "success";
+			case "disabled":
+				return "outline";
+			case "runtime-disabled":
+				return "secondary";
+			default:
+				return "outline";
 		}
-		// If in disabledMcpjsonServers, it's explicitly disabled
-		if (mcpEnabledState.disabledMcpjsonServers.includes(serverName)) {
-			return false;
-		}
-		// Default: enabled (not in either array)
-		return true;
 	};
 
-	const handleToggleServer = async (serverName: string) => {
-		const currentlyEnabled = isServerEnabled(serverName);
+	const getBadgeLabel = (state: string) => {
+		switch (state) {
+			case "enabled":
+				return t("mcp.enabled");
+			case "disabled":
+				return t("mcp.disabled");
+			case "runtime-disabled":
+				return t("mcp.runtimeDisabled");
+			default:
+				return t("mcp.disabled");
+		}
+	};
+
+	const handleToggleServer = async (server: McpServerState) => {
+		if (!server.controllable) return;
+		
+		const currentlyEnabled = server.state === "enabled" || server.state === "runtime-disabled";
 		toggleMcpServer.mutate({
-			serverName,
+			serverName: server.name,
 			enabled: !currentlyEnabled,
 		});
 	};
@@ -112,12 +125,12 @@ function MCPPageContent() {
 		}
 	};
 
-	const formatConfigForDisplay = (server: McpServer): string => {
-		return JSON.stringify(server, null, 2);
+	const formatConfigForDisplay = (server: McpServerState): string => {
+		return JSON.stringify(server.config, null, 2);
 	};
 
-	const serverEntries = Object.entries(mcpServers || {}).sort(([a], [b]) =>
-		a.localeCompare(b),
+	const sortedServers = [...mcpServersWithState].sort((a, b) =>
+		a.name.localeCompare(b.name),
 	);
 
 	return (
@@ -165,30 +178,27 @@ function MCPPageContent() {
 				</Dialog>
 			</div>
 			<div className="">
-				{serverEntries.length === 0 ? (
+				{sortedServers.length === 0 ? (
 					<div className="text-center text-muted-foreground py-8">
 						{t("mcp.noServersConfigured")}
 					</div>
 				) : (
 					<Accordion type="multiple" className="">
-						{serverEntries.map(([serverName, serverConfig]) => (
+						{sortedServers.map((server) => (
 							<AccordionItem
-								key={serverName}
-								value={serverName}
+								key={server.name}
+								value={server.name}
 								className="bg-card"
 							>
 								<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent  duration-150">
 									<div className="flex items-center gap-2">
 										<HammerIcon size={12} />
-										<span className="font-medium">{serverName}</span>
-										<Badge
-											variant={
-												isServerEnabled(serverName) ? "success" : "outline"
-											}
-										>
-											{isServerEnabled(serverName)
-												? t("mcp.enabled")
-												: t("mcp.disabled")}
+										<span className="font-medium">{server.name}</span>
+										<Badge variant={getBadgeVariant(server.state)}>
+											{getBadgeLabel(server.state)}
+										</Badge>
+										<Badge variant="outline" className="text-xs">
+											{server.sourceType}
 										</Badge>
 									</div>
 								</AccordionTrigger>
@@ -197,14 +207,14 @@ function MCPPageContent() {
 										<div className="rounded-lg overflow-hidden border">
 											<CodeMirror
 												value={
-													serverConfigs[serverName] ||
-													formatConfigForDisplay(serverConfig)
+													serverConfigs[server.name] ||
+													formatConfigForDisplay(server)
 												}
 												height="180px"
 												theme={codeMirrorTheme}
 												extensions={[json()]}
 												onChange={(value) =>
-													handleConfigChange(serverName, value)
+													handleConfigChange(server.name, value)
 												}
 												placeholder="Enter MCP server configuration as JSON"
 											/>
@@ -213,7 +223,7 @@ function MCPPageContent() {
 											<div className="flex gap-2">
 												<Button
 													variant="outline"
-													onClick={() => handleSaveConfig(serverName)}
+													onClick={() => handleSaveConfig(server.name)}
 													disabled={updateMcpServer.isPending}
 													size="sm"
 												>
@@ -226,7 +236,7 @@ function MCPPageContent() {
 												<Button
 													variant="ghost"
 													size="sm"
-													onClick={() => handleDeleteServer(serverName)}
+													onClick={() => handleDeleteServer(server.name)}
 													disabled={deleteMcpServer.isPending}
 												>
 													<TrashIcon size={14} className="" />
@@ -235,13 +245,18 @@ function MCPPageContent() {
 
 											<Button
 												variant={
-													isServerEnabled(serverName) ? "outline" : "default"
+													server.state === "enabled" ? "outline" : "default"
 												}
 												size="sm"
-												onClick={() => handleToggleServer(serverName)}
-												disabled={toggleMcpServer.isPending}
+												onClick={() => handleToggleServer(server)}
+												disabled={!server.controllable || toggleMcpServer.isPending}
+												title={
+													!server.controllable
+														? t("mcp.notControllable")
+														: undefined
+												}
 											>
-												{isServerEnabled(serverName)
+												{server.state === "enabled"
 													? t("mcp.disable")
 													: t("mcp.enable")}
 											</Button>
@@ -313,7 +328,7 @@ function MCPCreatePanel({ onClose }: { onClose?: () => void }) {
 function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 	const { t } = useTranslation();
 	const addMcpServer = useAddGlobalMcpServer();
-	const { data: mcpServers } = useGlobalMcpServers();
+	const { data: mcpServersWithState } = useGetMcpServersWithState();
 
 	const handleAddMcpServer = async (
 		mcpServer: (typeof builtInMcpServers)[0],
@@ -321,7 +336,7 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 		try {
 			// Check if MCP server already exists using cached data
 			const exists =
-				mcpServers && Object.keys(mcpServers).includes(mcpServer.name);
+				mcpServersWithState && mcpServersWithState.some(s => s.name === mcpServer.name);
 
 			if (exists) {
 				await message(
@@ -407,7 +422,7 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 	const { t } = useTranslation();
 	const [customConfig, setCustomConfig] = useState("");
 	const addMcpServer = useAddGlobalMcpServer();
-	const { data: mcpServers } = useGlobalMcpServers();
+	const { data: mcpServersWithState } = useGetMcpServersWithState();
 	const codeMirrorTheme = useCodeMirrorTheme();
 
 	const handleAddCustomMcpServer = async () => {
@@ -443,7 +458,7 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 			}
 
 			// Check for duplicate server names
-			const existingNames = mcpServers ? Object.keys(mcpServers) : [];
+			const existingNames = mcpServersWithState ? mcpServersWithState.map(s => s.name) : [];
 			const duplicateNames = serverNames.filter((name) =>
 				existingNames.includes(name),
 			);

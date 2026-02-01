@@ -79,6 +79,38 @@ pub struct ConfigStore {
 pub struct McpServer {
     #[serde(flatten)]
     pub config: serde_json::Value,
+    
+    // Metadata fields
+    #[serde(rename = "sourceType")]
+    pub source_type: String,  // "mcpjson" | "direct"
+    
+    pub scope: String,  // "user" for now (will add "local", "project" later)
+    
+    #[serde(rename = "definedIn")]
+    pub defined_in: String,  // File path where server is defined
+    
+    pub controllable: bool,  // true for mcpjson, false for direct
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct McpServerState {
+    pub name: String,
+    pub config: serde_json::Value,
+    
+    // Metadata
+    #[serde(rename = "sourceType")]
+    pub source_type: String,
+    pub scope: String,
+    #[serde(rename = "definedIn")]
+    pub defined_in: String,
+    pub controllable: bool,
+    
+    // State information
+    pub state: String,  // "disabled" | "enabled" | "runtime-disabled"
+    #[serde(rename = "inEnabledArray")]
+    pub in_enabled_array: bool,
+    #[serde(rename = "inDisabledArray")]
+    pub in_disabled_array: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -782,35 +814,74 @@ pub async fn open_config_path() -> Result<(), String> {
 
 // MCP Server management functions
 
+// Helper: Read MCPJSON servers from ~/.mcp.json
+fn read_mcpjson_servers(home_dir: &std::path::Path) -> Result<serde_json::Map<String, Value>, String> {
+    let mcp_json_path = home_dir.join(".mcp.json");
+    if !mcp_json_path.exists() {
+        return Ok(serde_json::Map::new());
+    }
+    
+    let content = std::fs::read_to_string(&mcp_json_path)
+        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
+    let json_value: Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
+    
+    Ok(json_value.get("mcpServers")
+        .and_then(|s| s.as_object())
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new))
+}
+
+// Helper: Read Direct servers from ~/.claude.json
+fn read_direct_servers(home_dir: &std::path::Path) -> Result<serde_json::Map<String, Value>, String> {
+    let claude_json_path = home_dir.join(".claude.json");
+    if !claude_json_path.exists() {
+        return Ok(serde_json::Map::new());
+    }
+    
+    let content = std::fs::read_to_string(&claude_json_path)
+        .map_err(|e| format!("Failed to read .claude.json: {}", e))?;
+    let json_value: Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse .claude.json: {}", e))?;
+    
+    Ok(json_value.get("mcpServers")
+        .and_then(|s| s.as_object())
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new))
+}
+
 #[tauri::command]
 pub async fn get_global_mcp_servers() -> Result<std::collections::HashMap<String, McpServer>, String> {
     let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let mcp_json_path = home_dir.join(".mcp.json");
-
-    if !mcp_json_path.exists() {
-        return Ok(std::collections::HashMap::new());
-    }
-
-    let content = std::fs::read_to_string(&mcp_json_path)
-        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
-
-    let json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
-
-    // Read from mcpServers key (same structure as .claude.json)
-    let mcp_servers_obj = json_value.get("mcpServers")
-        .and_then(|servers| servers.as_object())
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new);
-
     let mut result = std::collections::HashMap::new();
-    for (name, config) in mcp_servers_obj {
-        let mcp_server = McpServer {
-            config: config.clone(),
-        };
-        result.insert(name.clone(), mcp_server);
+    
+    // 1. Read from ~/.mcp.json (MCPJSON servers - user scope)
+    if let Ok(mcpjson_servers) = read_mcpjson_servers(&home_dir) {
+        for (name, config) in mcpjson_servers {
+            result.insert(name.clone(), McpServer {
+                config,
+                source_type: "mcpjson".to_string(),
+                scope: "user".to_string(),
+                defined_in: home_dir.join(".mcp.json").to_string_lossy().to_string(),
+                controllable: true,
+            });
+        }
     }
-
+    
+    // 2. Read from ~/.claude.json (Direct servers - user scope)
+    if let Ok(direct_servers) = read_direct_servers(&home_dir) {
+        for (name, config) in direct_servers {
+            // Don't override if already exists from .mcp.json
+            result.entry(name.clone()).or_insert(McpServer {
+                config,
+                source_type: "direct".to_string(),
+                scope: "user".to_string(),
+                defined_in: home_dir.join(".claude.json").to_string_lossy().to_string(),
+                controllable: false,
+            });
+        }
+    }
+    
     Ok(result)
 }
 
@@ -1071,6 +1142,42 @@ pub async fn toggle_mcp_server_state(server_name: String, enabled: bool) -> Resu
         .map_err(|e| format!("Failed to write settings.json: {}", e))?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_mcp_servers_with_state() -> Result<Vec<McpServerState>, String> {
+    let servers = get_global_mcp_servers().await?;
+    let state = get_mcp_enabled_state().await?;
+    
+    let mut result = Vec::new();
+    
+    for (name, server) in servers {
+        let in_enabled = state.enabled_mcp_json_servers.contains(&name);
+        let in_disabled = state.disabled_mcp_json_servers.contains(&name);
+        
+        // Compute state based on three-state logic
+        let computed_state = if in_disabled && !in_enabled {
+            "disabled"  // Completely disabled
+        } else if in_enabled && in_disabled {
+            "runtime-disabled"  // Configured but temporarily disabled
+        } else {
+            "enabled"  // Default or explicitly enabled
+        };
+        
+        result.push(McpServerState {
+            name: name.clone(),
+            config: server.config,
+            source_type: server.source_type,
+            scope: server.scope,
+            defined_in: server.defined_in,
+            controllable: server.controllable,
+            state: computed_state.to_string(),
+            in_enabled_array: in_enabled,
+            in_disabled_array: in_disabled,
+        });
+    }
+    
+    Ok(result)
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]

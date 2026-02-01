@@ -331,6 +331,7 @@ export const useUpdateGlobalMcpServer = () => {
 		onSuccess: () => {
 			toast.success("MCP server configuration updated successfully");
 			queryClient.invalidateQueries({ queryKey: ["global-mcp-servers"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -355,6 +356,7 @@ export const useAddGlobalMcpServer = () => {
 		onSuccess: () => {
 			toast.success("MCP server added successfully");
 			queryClient.invalidateQueries({ queryKey: ["global-mcp-servers"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -385,6 +387,7 @@ export const useDeleteGlobalMcpServer = () => {
 			toast.success("MCP server deleted successfully");
 			queryClient.invalidateQueries({ queryKey: ["global-mcp-servers"] });
 			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -422,12 +425,32 @@ export const useToggleMcpServer = () => {
 				`MCP server ${variables.enabled ? "enabled" : "disabled"} successfully`,
 			);
 			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			toast.error(`Failed to toggle MCP server: ${errorMessage}`);
 		},
+	});
+};
+
+export interface McpServerState {
+	name: string;
+	config: Record<string, any>;
+	sourceType: "mcpjson" | "direct";
+	scope: "user" | "project" | "local";
+	definedIn: string;
+	controllable: boolean;
+	state: "disabled" | "enabled" | "runtime-disabled";
+	inEnabledArray: boolean;
+	inDisabledArray: boolean;
+}
+
+export const useGetMcpServersWithState = () => {
+	return useSuspenseQuery({
+		queryKey: ["mcp-servers-with-state"],
+		queryFn: () => invoke<McpServerState[]>("get_mcp_servers_with_state"),
 	});
 };
 
