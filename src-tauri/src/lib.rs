@@ -184,6 +184,8 @@ pub fn run() {
             update_global_mcp_server,
             delete_global_mcp_server,
             check_mcp_server_exists,
+            get_mcp_enabled_state,
+            toggle_mcp_server_state,
             read_claude_projects,
             read_claude_config_file,
             write_claude_config_file,
@@ -203,6 +205,7 @@ pub fn run() {
             read_claude_commands,
             write_claude_command,
             delete_claude_command,
+            toggle_claude_command,
             read_claude_agents,
             write_claude_agent,
             delete_claude_agent

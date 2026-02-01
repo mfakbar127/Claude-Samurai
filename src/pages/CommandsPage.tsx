@@ -11,6 +11,7 @@ import {
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -26,6 +27,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	useClaudeCommands,
 	useDeleteClaudeCommand,
+	useToggleClaudeCommand,
 	useWriteClaudeCommand,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
@@ -35,6 +37,7 @@ function CommandsPageContent() {
 	const { data: commands, isLoading, error } = useClaudeCommands();
 	const writeCommand = useWriteClaudeCommand();
 	const deleteCommand = useDeleteClaudeCommand();
+	const toggleCommand = useToggleClaudeCommand();
 	const [commandEdits, setCommandEdits] = useState<Record<string, string>>({});
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
@@ -83,6 +86,10 @@ function CommandsPageContent() {
 		if (confirmed) {
 			deleteCommand.mutate(commandName);
 		}
+	};
+
+	const handleToggleCommand = (commandName: string, currentDisabled: boolean) => {
+		toggleCommand.mutate({ commandName, disabled: !currentDisabled });
 	};
 
 	return (
@@ -138,8 +145,11 @@ function CommandsPageContent() {
 											<div className="flex items-center gap-2">
 												<TerminalIcon size={12} />
 												<span className="font-medium">{command.name}</span>
+												<Badge variant={command.disabled ? "secondary" : "success"}>
+													{command.disabled ? t("commands.disabled") : t("commands.enabled")}
+												</Badge>
 												<span className="text-sm text-muted-foreground font-normal">
-													{`~/.claude/commands/${command.name}.md`}
+													{`~/.claude/commands/${command.name}.md${command.disabled ? '.disabled' : ''}`}
 												</span>
 											</div>
 										</AccordionTrigger>
@@ -183,20 +193,31 @@ function CommandsPageContent() {
 													/>
 												</div>
 												<div className="flex justify-between bg-card">
-													<Button
-														variant="outline"
-														onClick={() => handleSaveCommand(command.name)}
-														disabled={
-															writeCommand.isPending ||
-															commandEdits[command.name] === undefined
-														}
-														size="sm"
-													>
-														<SaveIcon size={14} className="" />
-														{writeCommand.isPending
-															? t("commands.saving")
-															: t("commands.save")}
-													</Button>
+													<div className="flex gap-2">
+														<Button
+															variant="outline"
+															onClick={() => handleSaveCommand(command.name)}
+															disabled={
+																writeCommand.isPending ||
+																commandEdits[command.name] === undefined
+															}
+															size="sm"
+														>
+															<SaveIcon size={14} className="" />
+															{writeCommand.isPending
+																? t("commands.saving")
+																: t("commands.save")}
+														</Button>
+
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => handleToggleCommand(command.name, command.disabled)}
+															disabled={toggleCommand.isPending}
+														>
+															{command.disabled ? t("commands.enable") : t("commands.disable")}
+														</Button>
+													</div>
 
 													<Button
 														variant="ghost"

@@ -52,6 +52,7 @@ export interface CommandFile {
 	name: string;
 	content: string;
 	exists: boolean;
+	disabled: boolean;
 }
 
 export const useConfigFiles = () => {
@@ -383,11 +384,49 @@ export const useDeleteGlobalMcpServer = () => {
 		onSuccess: () => {
 			toast.success("MCP server deleted successfully");
 			queryClient.invalidateQueries({ queryKey: ["global-mcp-servers"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state"] });
 		},
 		onError: (error) => {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			toast.error(`Failed to delete MCP server: ${errorMessage}`);
+		},
+	});
+};
+
+export interface McpEnabledState {
+	enabledMcpjsonServers: string[];
+	disabledMcpjsonServers: string[];
+}
+
+export const useGetMcpEnabledState = () => {
+	return useSuspenseQuery({
+		queryKey: ["mcp-enabled-state"],
+		queryFn: () => invoke<McpEnabledState>("get_mcp_enabled_state"),
+	});
+};
+
+export const useToggleMcpServer = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			serverName,
+			enabled,
+		}: {
+			serverName: string;
+			enabled: boolean;
+		}) => invoke<void>("toggle_mcp_server_state", { serverName, enabled }),
+		onSuccess: (_, variables) => {
+			toast.success(
+				`MCP server ${variables.enabled ? "enabled" : "disabled"} successfully`,
+			);
+			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(`Failed to toggle MCP server: ${errorMessage}`);
 		},
 	});
 };
@@ -564,6 +603,29 @@ export const useDeleteClaudeCommand = () => {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			toast.error(i18n.t("toast.commandDeleteFailed", { error: errorMessage }));
+		},
+	});
+};
+
+export const useToggleClaudeCommand = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			commandName,
+			disabled,
+		}: {
+			commandName: string;
+			disabled: boolean;
+		}) => invoke<void>("toggle_claude_command", { commandName, disabled }),
+		onSuccess: () => {
+			toast.success(i18n.t("toast.commandToggled"));
+			queryClient.invalidateQueries({ queryKey: ["claude-commands"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(i18n.t("toast.commandToggleFailed", { error: errorMessage }));
 		},
 	});
 };

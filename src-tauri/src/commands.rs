@@ -785,18 +785,19 @@ pub async fn open_config_path() -> Result<(), String> {
 #[tauri::command]
 pub async fn get_global_mcp_servers() -> Result<std::collections::HashMap<String, McpServer>, String> {
     let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let claude_json_path = home_dir.join(".claude.json");
+    let mcp_json_path = home_dir.join(".mcp.json");
 
-    if !claude_json_path.exists() {
+    if !mcp_json_path.exists() {
         return Ok(std::collections::HashMap::new());
     }
 
-    let content = std::fs::read_to_string(&claude_json_path)
-        .map_err(|e| format!("Failed to read .claude.json: {}", e))?;
+    let content = std::fs::read_to_string(&mcp_json_path)
+        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
 
     let json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .claude.json: {}", e))?;
+        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
 
+    // Read from mcpServers key (same structure as .claude.json)
     let mcp_servers_obj = json_value.get("mcpServers")
         .and_then(|servers| servers.as_object())
         .cloned()
@@ -825,19 +826,19 @@ pub async fn update_global_mcp_server(
     server_config: Value,
 ) -> Result<(), String> {
     let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let claude_json_path = home_dir.join(".claude.json");
+    let mcp_json_path = home_dir.join(".mcp.json");
 
-    // Read existing .claude.json or create new structure
-    let mut json_value = if claude_json_path.exists() {
-        let content = std::fs::read_to_string(&claude_json_path)
-            .map_err(|e| format!("Failed to read .claude.json: {}", e))?;
+    // Read existing .mcp.json or create new structure
+    let mut json_value = if mcp_json_path.exists() {
+        let content = std::fs::read_to_string(&mcp_json_path)
+            .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
         serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse .claude.json: {}", e))?
+            .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?
     } else {
         Value::Object(serde_json::Map::new())
     };
 
-    // Update mcpServers object
+    // Update mcpServers object (same structure as .claude.json)
     let mcp_servers = json_value
         .as_object_mut()
         .unwrap()
@@ -853,8 +854,8 @@ pub async fn update_global_mcp_server(
     let json_content = serde_json::to_string_pretty(&json_value)
         .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
 
-    std::fs::write(&claude_json_path, json_content)
-        .map_err(|e| format!("Failed to write .claude.json: {}", e))?;
+    std::fs::write(&mcp_json_path, json_content)
+        .map_err(|e| format!("Failed to write .mcp.json: {}", e))?;
 
     Ok(())
 }
@@ -862,18 +863,18 @@ pub async fn update_global_mcp_server(
 #[tauri::command]
 pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String> {
     let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let claude_json_path = home_dir.join(".claude.json");
+    let mcp_json_path = home_dir.join(".mcp.json");
 
-    if !claude_json_path.exists() {
-        return Err("Claude configuration file does not exist".to_string());
+    if !mcp_json_path.exists() {
+        return Err("MCP configuration file does not exist".to_string());
     }
 
-    // Read existing .claude.json
-    let content = std::fs::read_to_string(&claude_json_path)
-        .map_err(|e| format!("Failed to read .claude.json: {}", e))?;
+    // Read existing .mcp.json
+    let content = std::fs::read_to_string(&mcp_json_path)
+        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
 
     let mut json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .claude.json: {}", e))?;
+        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
 
     // Check if mcpServers exists
     let mcp_servers = json_value
@@ -884,7 +885,7 @@ pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String>
 
     let mcp_servers = match mcp_servers {
         Some(servers) => servers,
-        None => return Err("No mcpServers found in .claude.json".to_string()),
+        None => return Err("No mcpServers found in .mcp.json".to_string()),
     };
 
     // Check if the server exists
@@ -904,8 +905,170 @@ pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String>
     let json_content = serde_json::to_string_pretty(&json_value)
         .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
 
-    std::fs::write(&claude_json_path, json_content)
-        .map_err(|e| format!("Failed to write .claude.json: {}", e))?;
+    std::fs::write(&mcp_json_path, json_content)
+        .map_err(|e| format!("Failed to write .mcp.json: {}", e))?;
+
+    // Also remove from settings.json enabled/disabled arrays
+    remove_mcp_from_settings(&server_name).await?;
+
+    Ok(())
+}
+
+// Helper function to remove MCP server from settings arrays
+async fn remove_mcp_from_settings(server_name: &str) -> Result<(), String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let settings_path = home_dir.join(".claude/settings.json");
+
+    if !settings_path.exists() {
+        return Ok(()); // Nothing to remove if settings doesn't exist
+    }
+
+    let content = std::fs::read_to_string(&settings_path)
+        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
+
+    let mut settings: Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
+
+    let settings_obj = settings.as_object_mut()
+        .ok_or("Settings is not an object")?;
+
+    // Remove from enabledMcpjsonServers
+    if let Some(enabled) = settings_obj.get_mut("enabledMcpjsonServers") {
+        if let Some(enabled_arr) = enabled.as_array_mut() {
+            enabled_arr.retain(|v| v.as_str() != Some(server_name));
+        }
+    }
+
+    // Remove from disabledMcpjsonServers
+    if let Some(disabled) = settings_obj.get_mut("disabledMcpjsonServers") {
+        if let Some(disabled_arr) = disabled.as_array_mut() {
+            disabled_arr.retain(|v| v.as_str() != Some(server_name));
+        }
+    }
+
+    let json_content = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    std::fs::write(&settings_path, json_content)
+        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
+
+    Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct McpEnabledState {
+    #[serde(rename = "enabledMcpjsonServers")]
+    pub enabled_mcp_json_servers: Vec<String>,
+    #[serde(rename = "disabledMcpjsonServers")]
+    pub disabled_mcp_json_servers: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_mcp_enabled_state() -> Result<McpEnabledState, String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let settings_path = home_dir.join(".claude/settings.json");
+
+    if !settings_path.exists() {
+        return Ok(McpEnabledState {
+            enabled_mcp_json_servers: vec![],
+            disabled_mcp_json_servers: vec![],
+        });
+    }
+
+    let content = std::fs::read_to_string(&settings_path)
+        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
+
+    let settings: Value = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
+
+    let enabled = settings.get("enabledMcpjsonServers")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(Vec::new);
+
+    let disabled = settings.get("disabledMcpjsonServers")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_else(Vec::new);
+
+    Ok(McpEnabledState {
+        enabled_mcp_json_servers: enabled,
+        disabled_mcp_json_servers: disabled,
+    })
+}
+
+#[tauri::command]
+pub async fn toggle_mcp_server_state(server_name: String, enabled: bool) -> Result<(), String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let settings_path = home_dir.join(".claude/settings.json");
+
+    // Ensure settings directory exists
+    let settings_dir = settings_path.parent().ok_or("Failed to get settings directory")?;
+    if !settings_dir.exists() {
+        std::fs::create_dir_all(settings_dir)
+            .map_err(|e| format!("Failed to create settings directory: {}", e))?;
+    }
+
+    // Read existing settings or create new
+    let mut settings = if settings_path.exists() {
+        let content = std::fs::read_to_string(&settings_path)
+            .map_err(|e| format!("Failed to read settings.json: {}", e))?;
+        serde_json::from_str(&content)
+            .map_err(|e| format!("Failed to parse settings.json: {}", e))?
+    } else {
+        Value::Object(serde_json::Map::new())
+    };
+
+    let settings_obj = settings.as_object_mut()
+        .ok_or("Settings is not an object")?;
+
+    // Ensure both arrays exist
+    settings_obj
+        .entry("enabledMcpjsonServers".to_string())
+        .or_insert_with(|| Value::Array(vec![]));
+    settings_obj
+        .entry("disabledMcpjsonServers".to_string())
+        .or_insert_with(|| Value::Array(vec![]));
+
+    // Remove from enabled array
+    if let Some(enabled_arr) = settings_obj
+        .get_mut("enabledMcpjsonServers")
+        .and_then(|v| v.as_array_mut())
+    {
+        enabled_arr.retain(|v| v.as_str() != Some(&server_name));
+    }
+
+    // Remove from disabled array
+    if let Some(disabled_arr) = settings_obj
+        .get_mut("disabledMcpjsonServers")
+        .and_then(|v| v.as_array_mut())
+    {
+        disabled_arr.retain(|v| v.as_str() != Some(&server_name));
+    }
+
+    // Add to appropriate array
+    if enabled {
+        if let Some(enabled_arr) = settings_obj
+            .get_mut("enabledMcpjsonServers")
+            .and_then(|v| v.as_array_mut())
+        {
+            enabled_arr.push(Value::String(server_name));
+        }
+    } else {
+        if let Some(disabled_arr) = settings_obj
+            .get_mut("disabledMcpjsonServers")
+            .and_then(|v| v.as_array_mut())
+        {
+            disabled_arr.push(Value::String(server_name));
+        }
+    }
+
+    // Write back to file
+    let json_content = serde_json::to_string_pretty(&settings)
+        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
+
+    std::fs::write(&settings_path, json_content)
+        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
 
     Ok(())
 }
@@ -1913,6 +2076,7 @@ pub struct CommandFile {
     pub name: String,
     pub content: String,
     pub exists: bool,
+    pub disabled: bool,
 }
 
 #[tauri::command]
@@ -1926,7 +2090,7 @@ pub async fn read_claude_commands() -> Result<Vec<CommandFile>, String> {
 
     let mut command_files = Vec::new();
 
-    // Read all .md files in the commands directory
+    // Read all .md and .md.disabled files in the commands directory
     let entries = std::fs::read_dir(&commands_dir)
         .map_err(|e| format!("Failed to read commands directory: {}", e))?;
 
@@ -1934,20 +2098,38 @@ pub async fn read_claude_commands() -> Result<Vec<CommandFile>, String> {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map(|ext| ext == "md").unwrap_or(false) {
-            let file_name = path.file_stem()
+        if path.is_file() {
+            let file_name_str = path.file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+                .unwrap_or("");
 
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read command file {}: {}", path.display(), e))?;
+            // Check if it's a .md or .md.disabled file
+            let (is_command_file, is_disabled) = if file_name_str.ends_with(".md.disabled") {
+                (true, true)
+            } else if file_name_str.ends_with(".md") {
+                (true, false)
+            } else {
+                (false, false)
+            };
 
-            command_files.push(CommandFile {
-                name: file_name,
-                content,
-                exists: true,
-            });
+            if is_command_file {
+                // Extract the command name (without .md or .md.disabled)
+                let command_name = if is_disabled {
+                    file_name_str.trim_end_matches(".md.disabled").to_string()
+                } else {
+                    file_name_str.trim_end_matches(".md").to_string()
+                };
+
+                let content = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("Failed to read command file {}: {}", path.display(), e))?;
+
+                command_files.push(CommandFile {
+                    name: command_name,
+                    content,
+                    exists: true,
+                    disabled: is_disabled,
+                });
+            }
         }
     }
 
@@ -1983,6 +2165,38 @@ pub async fn delete_claude_command(command_name: String) -> Result<(), String> {
         std::fs::remove_file(&command_file_path)
             .map_err(|e| format!("Failed to delete command file: {}", e))?;
     }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_claude_command(command_name: String, disabled: bool) -> Result<(), String> {
+    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let commands_dir = home_dir.join(".claude/commands");
+
+    let (source_path, target_path) = if disabled {
+        // Disable: rename from .md to .md.disabled
+        (
+            commands_dir.join(format!("{}.md", command_name)),
+            commands_dir.join(format!("{}.md.disabled", command_name)),
+        )
+    } else {
+        // Enable: rename from .md.disabled to .md
+        (
+            commands_dir.join(format!("{}.md.disabled", command_name)),
+            commands_dir.join(format!("{}.md", command_name)),
+        )
+    };
+
+    if !source_path.exists() {
+        return Err(format!(
+            "Command file {} does not exist",
+            source_path.display()
+        ));
+    }
+
+    std::fs::rename(&source_path, &target_path)
+        .map_err(|e| format!("Failed to toggle command file: {}", e))?;
 
     Ok(())
 }

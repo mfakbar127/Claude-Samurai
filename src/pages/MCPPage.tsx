@@ -18,6 +18,7 @@ import {
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -32,7 +33,9 @@ import {
 	type McpServer,
 	useAddGlobalMcpServer,
 	useDeleteGlobalMcpServer,
+	useGetMcpEnabledState,
 	useGlobalMcpServers,
+	useToggleMcpServer,
 	useUpdateGlobalMcpServer,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
@@ -40,13 +43,37 @@ import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 function MCPPageContent() {
 	const { t } = useTranslation();
 	const { data: mcpServers } = useGlobalMcpServers();
+	const { data: mcpEnabledState } = useGetMcpEnabledState();
 	const updateMcpServer = useUpdateGlobalMcpServer();
 	const deleteMcpServer = useDeleteGlobalMcpServer();
+	const toggleMcpServer = useToggleMcpServer();
 	const [serverConfigs, setServerConfigs] = useState<Record<string, string>>(
 		{},
 	);
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
+
+	// Helper function to determine if a server is enabled
+	const isServerEnabled = (serverName: string): boolean => {
+		// If in enabledMcpjsonServers, it's explicitly enabled
+		if (mcpEnabledState.enabledMcpjsonServers.includes(serverName)) {
+			return true;
+		}
+		// If in disabledMcpjsonServers, it's explicitly disabled
+		if (mcpEnabledState.disabledMcpjsonServers.includes(serverName)) {
+			return false;
+		}
+		// Default: enabled (not in either array)
+		return true;
+	};
+
+	const handleToggleServer = async (serverName: string) => {
+		const currentlyEnabled = isServerEnabled(serverName);
+		toggleMcpServer.mutate({
+			serverName,
+			enabled: !currentlyEnabled,
+		});
+	};
 
 	const handleConfigChange = (serverName: string, configText: string) => {
 		setServerConfigs((prev) => ({
@@ -154,6 +181,15 @@ function MCPPageContent() {
 									<div className="flex items-center gap-2">
 										<HammerIcon size={12} />
 										<span className="font-medium">{serverName}</span>
+										<Badge
+											variant={
+												isServerEnabled(serverName) ? "success" : "outline"
+											}
+										>
+											{isServerEnabled(serverName)
+												? t("mcp.enabled")
+												: t("mcp.disabled")}
+										</Badge>
 									</div>
 								</AccordionTrigger>
 								<AccordionContent className="pb-3">
@@ -174,25 +210,40 @@ function MCPPageContent() {
 											/>
 										</div>
 										<div className="flex justify-between  bg-card">
-											<Button
-												variant="outline"
-												onClick={() => handleSaveConfig(serverName)}
-												disabled={updateMcpServer.isPending}
-												size="sm"
-											>
-												<SaveIcon size={14} className="" />
-												{updateMcpServer.isPending
-													? t("mcp.saving")
-													: t("mcp.save")}
-											</Button>
+											<div className="flex gap-2">
+												<Button
+													variant="outline"
+													onClick={() => handleSaveConfig(serverName)}
+													disabled={updateMcpServer.isPending}
+													size="sm"
+												>
+													<SaveIcon size={14} className="" />
+													{updateMcpServer.isPending
+														? t("mcp.saving")
+														: t("mcp.save")}
+												</Button>
+
+												<Button
+													variant="ghost"
+													size="sm"
+													onClick={() => handleDeleteServer(serverName)}
+													disabled={deleteMcpServer.isPending}
+												>
+													<TrashIcon size={14} className="" />
+												</Button>
+											</div>
 
 											<Button
-												variant="ghost"
+												variant={
+													isServerEnabled(serverName) ? "outline" : "default"
+												}
 												size="sm"
-												onClick={() => handleDeleteServer(serverName)}
-												disabled={deleteMcpServer.isPending}
+												onClick={() => handleToggleServer(serverName)}
+												disabled={toggleMcpServer.isPending}
 											>
-												<TrashIcon size={14} className="" />
+												{isServerEnabled(serverName)
+													? t("mcp.disable")
+													: t("mcp.enable")}
 											</Button>
 										</div>
 									</div>
