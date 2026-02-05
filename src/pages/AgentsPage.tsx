@@ -1,7 +1,5 @@
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { ask, message } from "@tauri-apps/plugin-dialog";
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import CodeMirror from "@uiw/react-codemirror";
 import { BotIcon, PlusIcon, SaveIcon, TrashIcon } from "lucide-react";
 import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -11,6 +9,7 @@ import {
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
 	Dialog,
@@ -23,21 +22,56 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { codeMirrorBasicSetup, markdownExtensions } from "@/lib/codemirror-config";
 import {
 	useClaudeAgents,
 	useDeleteClaudeAgent,
+	usePluginAgents,
 	useWriteClaudeAgent,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 
+type UnifiedAgent = {
+	name: string;
+	content: string;
+	exists: boolean;
+	source: "user" | "plugin";
+	pluginName?: string;
+	pluginScope?: string;
+	sourcePath: string;
+};
+
 function AgentsPageContent() {
 	const { t } = useTranslation();
-	const { data: agents, isLoading, error } = useClaudeAgents();
+	const { data: userAgents, isLoading: isLoadingUser, error: errorUser } = useClaudeAgents();
+	const { data: pluginAgents, isLoading: isLoadingPlugin, error: errorPlugin } = usePluginAgents();
 	const writeAgent = useWriteClaudeAgent();
 	const deleteAgent = useDeleteClaudeAgent();
 	const [agentEdits, setAgentEdits] = useState<Record<string, string>>({});
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
+
+	const isLoading = isLoadingUser || isLoadingPlugin;
+	const error = errorUser || errorPlugin;
+
+	const agents: UnifiedAgent[] = [
+		...(userAgents || []).map((agent): UnifiedAgent => ({
+			name: agent.name,
+			content: agent.content,
+			exists: agent.exists,
+			source: "user",
+			sourcePath: `~/.claude/agents/${agent.name}.md`,
+		})),
+		...(pluginAgents || []).map((agent): UnifiedAgent => ({
+			name: agent.name,
+			content: agent.content,
+			exists: agent.exists,
+			source: "plugin",
+			pluginName: agent.pluginName,
+			pluginScope: agent.pluginScope,
+			sourcePath: agent.sourcePath,
+		})),
+	].sort((a, b) => a.name.localeCompare(b.name));
 
 	if (isLoading) {
 		return (
@@ -86,9 +120,9 @@ function AgentsPageContent() {
 	};
 
 	return (
-		<div className="">
+		<div>
 			<div
-				className="flex items-center p-3 border-b px-3 justify-between sticky top-0 bg-background z-10"
+				className="flex items-center justify-between sticky top-0 z-10 border-b p-3 bg-background"
 				data-tauri-drag-region
 			>
 				<div data-tauri-drag-region>
@@ -108,9 +142,7 @@ function AgentsPageContent() {
 					</DialogTrigger>
 					<DialogContent className="max-w-[600px]">
 						<DialogHeader>
-							<DialogTitle className="">
-								{t("agents.addAgentTitle")}
-							</DialogTitle>
+							<DialogTitle>{t("agents.addAgentTitle")}</DialogTitle>
 							<DialogDescription className="text-muted-foreground text-sm">
 								{t("agents.addAgentDescription")}
 							</DialogDescription>
@@ -119,15 +151,15 @@ function AgentsPageContent() {
 					</DialogContent>
 				</Dialog>
 			</div>
-			<div className="">
-				{!agents || agents.length === 0 ? (
+			<div>
+				{agents.length === 0 ? (
 					<div className="text-center text-muted-foreground py-8">
 						{t("agents.noAgents")}
 					</div>
 				) : (
 					<ScrollArea className="h-full">
-						<div className="">
-							<Accordion type="multiple" className="">
+						<div>
+							<Accordion type="multiple">
 								{agents.map((agent) => (
 									<AccordionItem
 										key={agent.name}
@@ -135,11 +167,25 @@ function AgentsPageContent() {
 										className="bg-card"
 									>
 										<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
-											<div className="flex items-center gap-2">
+											<div className="flex items-center gap-2 flex-wrap">
 												<BotIcon size={12} />
 												<span className="font-medium">{agent.name}</span>
+												{agent.source === "user" ? (
+													<Badge variant="default">
+														{t("agents.sourceUser")}
+													</Badge>
+												) : (
+													<>
+														<Badge variant="outline">
+															{agent.pluginName}
+														</Badge>
+														<Badge variant={agent.pluginScope === "user" ? "default" : "secondary"}>
+															{agent.pluginScope === "user" ? t("plugins.scopeUser") : t("plugins.scopeLocal")}
+														</Badge>
+													</>
+												)}
 												<span className="text-sm text-muted-foreground font-normal">
-													{`~/.claude/agents/${agent.name}.md`}
+													{agent.sourcePath}
 												</span>
 											</div>
 										</AccordionTrigger>
@@ -147,39 +193,15 @@ function AgentsPageContent() {
 											<div className="px-3 pt-3 space-y-3">
 												<div className="rounded-lg overflow-hidden border">
 													<CodeMirror
-														value={
-															agentEdits[agent.name] !== undefined
-																? agentEdits[agent.name]
-																: agent.content
-														}
+														value={agentEdits[agent.name] ?? agent.content}
 														height="180px"
 														theme={codeMirrorTheme}
 														onChange={(value) =>
 															handleContentChange(agent.name, value)
 														}
 														placeholder={t("agents.contentPlaceholder")}
-														extensions={[
-															yamlFrontmatter({
-																content: markdown({
-																	base: markdownLanguage,
-																}),
-															}),
-															EditorView.lineWrapping,
-														]}
-														basicSetup={{
-															lineNumbers: false,
-															highlightActiveLineGutter: true,
-															foldGutter: false,
-															dropCursor: false,
-															allowMultipleSelections: false,
-															indentOnInput: true,
-															bracketMatching: true,
-															closeBrackets: true,
-															autocompletion: true,
-															highlightActiveLine: true,
-															highlightSelectionMatches: true,
-															searchKeymap: false,
-														}}
+														extensions={markdownExtensions}
+														basicSetup={codeMirrorBasicSetup}
 													/>
 												</div>
 												<div className="flex justify-between bg-card">
@@ -192,7 +214,7 @@ function AgentsPageContent() {
 														}
 														size="sm"
 													>
-														<SaveIcon size={14} className="" />
+														<SaveIcon size={14} />
 														{writeAgent.isPending
 															? t("agents.saving")
 															: t("agents.save")}
@@ -204,7 +226,7 @@ function AgentsPageContent() {
 														onClick={() => handleDeleteAgent(agent.name)}
 														disabled={deleteAgent.isPending}
 													>
-														<TrashIcon size={14} className="" />
+														<TrashIcon size={14} />
 													</Button>
 												</div>
 											</div>
@@ -236,7 +258,11 @@ export function AgentsPage() {
 	);
 }
 
-function CreateAgentPanel({ onClose }: { onClose?: () => void }) {
+type CreateAgentPanelProps = {
+	onClose?: () => void;
+};
+
+function CreateAgentPanel({ onClose }: CreateAgentPanelProps) {
 	const { t } = useTranslation();
 	const [agentName, setAgentName] = useState("");
 	const [agentContent, setAgentContent] = useState(`---
@@ -257,7 +283,6 @@ the subagent should follow.`);
 	const codeMirrorTheme = useCodeMirrorTheme();
 
 	const handleCreateAgent = async () => {
-		// Validate agent name
 		if (!agentName.trim()) {
 			await message(t("agents.emptyNameError"), {
 				title: t("agents.validationError"),
@@ -266,9 +291,7 @@ the subagent should follow.`);
 			return;
 		}
 
-		// Check if agent already exists
-		const exists = agents?.some((agent) => agent.name === agentName);
-		if (exists) {
+		if (agents?.some((a) => a.name === agentName)) {
 			await message(t("agents.agentExistsError", { agentName }), {
 				title: t("agents.agentExistsTitle"),
 				kind: "info",
@@ -276,7 +299,6 @@ the subagent should follow.`);
 			return;
 		}
 
-		// Validate content
 		if (!agentContent.trim()) {
 			await message(t("agents.emptyContentError"), {
 				title: t("agents.validationError"),
@@ -324,29 +346,9 @@ the subagent should follow.`);
 						onChange={(value) => setAgentContent(value)}
 						height="200px"
 						theme={codeMirrorTheme}
-						placeholder={t("agents.contentPlaceholder")}
-						extensions={[
-							yamlFrontmatter({
-								content: markdown({
-									base: markdownLanguage,
-								}),
-							}),
-							EditorView.lineWrapping,
-						]}
-						basicSetup={{
-							lineNumbers: false,
-							highlightActiveLineGutter: true,
-							foldGutter: false,
-							dropCursor: false,
-							allowMultipleSelections: false,
-							indentOnInput: true,
-							bracketMatching: true,
-							closeBrackets: true,
-							autocompletion: true,
-							highlightActiveLine: true,
-							highlightSelectionMatches: true,
-							searchKeymap: false,
-						}}
+														placeholder={t("agents.contentPlaceholder")}
+														extensions={markdownExtensions}
+														basicSetup={codeMirrorBasicSetup}
 					/>
 				</div>
 			</div>

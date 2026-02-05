@@ -6,6 +6,7 @@ import {
 	CpuIcon,
 	FileJsonIcon,
 	FolderIcon,
+	PackageIcon,
 	SettingsIcon,
 	TerminalIcon,
 } from "lucide-react";
@@ -51,6 +52,11 @@ export function Layout() {
 			to: "/commands",
 			icon: TerminalIcon,
 			label: t("navigation.commands"),
+		},
+		{
+			to: "/plugins",
+			icon: PackageIcon,
+			label: t("navigation.plugins"),
 		},
 		{
 			to: "/notification",

@@ -1,4 +1,5 @@
 mod commands;
+mod helper;
 mod tray;
 mod hook_server;
 
@@ -186,6 +187,7 @@ pub fn run() {
             check_mcp_server_exists,
             get_mcp_enabled_state,
             toggle_mcp_server_state,
+            toggle_direct_mcp_server,
             get_mcp_servers_with_state,
             read_claude_projects,
             read_claude_config_file,
@@ -209,7 +211,11 @@ pub fn run() {
             toggle_claude_command,
             read_claude_agents,
             write_claude_agent,
-            delete_claude_agent
+            delete_claude_agent,
+            read_installed_plugins,
+            toggle_plugin,
+            read_plugin_commands,
+            read_plugin_agents
         ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]

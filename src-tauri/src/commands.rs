@@ -5,13 +5,20 @@ use reqwest;
 use uuid::Uuid;
 use nanoid;
 
+use crate::helper::{
+    ensure_dir, extract_string_array, get_project_path_from_claude_json, home_dir,
+    path_to_string, read_direct_servers, read_disabled_mcp_servers_from_claude_json,
+    read_json_file, read_json_file_mcp_servers, read_local_mcp_servers, read_mcpjson_servers,
+    read_project_mcp_servers, write_json_file, write_json_file_serialize,
+};
+
 // Application configuration directory
 const APP_CONFIG_DIR: &str = ".ccconfig";
 
 pub async fn initialize_app_config() -> Result<(), String> {
     println!("initialize_app_config called");
 
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
 
     println!(
@@ -22,8 +29,7 @@ pub async fn initialize_app_config() -> Result<(), String> {
     // Create config directory if it doesn't exist
     if !app_config_path.exists() {
         println!("App config directory does not exist, creating...");
-        std::fs::create_dir_all(&app_config_path)
-            .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+        ensure_dir(&app_config_path, "app config directory")?;
         println!(
             "App config directory created: {}",
             app_config_path.display()
@@ -113,7 +119,8 @@ pub struct McpServerState {
     pub in_disabled_array: bool,
 }
 
-#[derive(serde::Serialize, serde::Deserialize, Debug)]
+#[derive(serde::Serialize, serde::Deserialize, Debug, Default)]
+#[serde(default)]
 pub struct StoresData {
     pub configs: Vec<ConfigStore>,
     pub distinct_id: Option<String>,
@@ -128,7 +135,7 @@ pub struct NotificationSettings {
 
 #[tauri::command]
 pub async fn read_config_file(config_type: String) -> Result<ConfigFile, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
 
     let path = match config_type.as_str() {
         "user" => home_dir.join(".claude/settings.json"),
@@ -143,43 +150,25 @@ pub async fn read_config_file(config_type: String) -> Result<ConfigFile, String>
         _ => return Err("Invalid configuration type".to_string()),
     };
 
-    let path_str = path.to_string_lossy().to_string();
-
-    if path.exists() {
-        let content =
-            std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))?;
-
-        let json_content: Value =
-            serde_json::from_str(&content).map_err(|e| format!("Failed to parse JSON: {}", e))?;
-
-        Ok(ConfigFile {
-            path: path_str,
-            content: json_content,
-            exists: true,
-        })
-    } else {
-        Ok(ConfigFile {
-            path: path_str,
-            content: Value::Object(serde_json::Map::new()),
-            exists: false,
-        })
-    }
+    let path_str = path_to_string(&path);
+    let content = read_json_file(&path, "config file")?;
+    Ok(ConfigFile {
+        path: path_str,
+        content,
+        exists: path.exists(),
+    })
 }
 
 #[tauri::command]
 pub async fn write_config_file(config_type: String, content: Value) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
 
     let path = match config_type.as_str() {
         "user" => home_dir.join(".claude/settings.json"),
         _ => return Err("Cannot write to enterprise configuration files".to_string()),
     };
 
-    let json_content = serde_json::to_string_pretty(&content)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
-
-    std::fs::write(&path, json_content).map_err(|e| format!("Failed to write file: {}", e))?;
-
+    write_json_file(&path, &content, "config file")?;
     Ok(())
 }
 
@@ -234,18 +223,17 @@ pub async fn list_config_files() -> Result<Vec<String>, String> {
 
 #[tauri::command]
 pub async fn check_app_config_exists() -> Result<bool, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     Ok(app_config_path.exists())
 }
 
 #[tauri::command]
 pub async fn create_app_config_dir() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
 
-    std::fs::create_dir_all(&app_config_path)
-        .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+    ensure_dir(&app_config_path, "app config directory")?;
 
     Ok(())
 }
@@ -257,8 +245,7 @@ fn backup_claude_configs_internal(
     // Create backup directory
     let backup_dir = app_config_path.join("claude_backup");
 
-    std::fs::create_dir_all(&backup_dir)
-        .map_err(|e| format!("Failed to create backup directory: {}", e))?;
+    ensure_dir(&backup_dir, "backup directory")?;
 
     // Copy all files from .claude directory to backup
     for entry in std::fs::read_dir(claude_dir)
@@ -280,7 +267,7 @@ fn backup_claude_configs_internal(
 
 #[tauri::command]
 pub async fn backup_claude_configs() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_dir = home_dir.join(".claude");
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
 
@@ -289,8 +276,7 @@ pub async fn backup_claude_configs() -> Result<(), String> {
     }
 
     // Ensure app config directory exists
-    std::fs::create_dir_all(&app_config_path)
-        .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+    ensure_dir(&app_config_path, "app config directory")?;
 
     backup_claude_configs_internal(&app_config_path, &claude_dir)
 }
@@ -299,19 +285,11 @@ pub async fn backup_claude_configs() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_stores() -> Result<Vec<ConfigStore>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
-    if !stores_file.exists() {
-        return Ok(vec![]);
-    }
-
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let mut stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let mut stores_data = read_stores_file(&stores_file)?;
 
     // Add default notification settings if they don't exist
     if stores_data.notification.is_none() {
@@ -321,12 +299,7 @@ pub async fn get_stores() -> Result<Vec<ConfigStore>, String> {
         });
 
         // Write back to stores file with notification settings added
-        let json_content = serde_json::to_string_pretty(&stores_data)
-            .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-        std::fs::write(&stores_file, json_content)
-            .map_err(|e| format!("Failed to write stores file: {}", e))?;
-
+        write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
         println!("Added default notification settings to existing stores.json");
     }
 
@@ -343,31 +316,21 @@ pub async fn create_config(
     title: String,
     settings: Value,
 ) -> Result<ConfigStore, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
     // Ensure app config directory exists
-    std::fs::create_dir_all(&app_config_path)
-        .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+    ensure_dir(&app_config_path, "app config directory")?;
 
     // Read existing stores
-    let mut stores_data = if stores_file.exists() {
-        let content = std::fs::read_to_string(&stores_file)
-            .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-        serde_json::from_str::<StoresData>(&content)
-            .map_err(|e| format!("Failed to parse stores file: {}", e))?
-    } else {
-        StoresData {
-            configs: vec![],
-            distinct_id: None,
-            notification: Some(NotificationSettings {
-                enable: true,
-                enabled_hooks: vec!["Notification".to_string()],
-            }),
-        }
-    };
+    let mut stores_data = read_stores_file(&stores_file)?;
+    if stores_data.notification.is_none() {
+        stores_data.notification = Some(NotificationSettings {
+            enable: true,
+            enabled_hooks: vec!["Notification".to_string()],
+        });
+    }
 
     // Determine if this should be the active store (true if no other stores exist)
     let should_be_active = stores_data.configs.is_empty();
@@ -377,11 +340,7 @@ pub async fn create_config(
         let claude_settings_path = home_dir.join(".claude/settings.json");
         if claude_settings_path.exists() {
             // Read existing settings
-            let settings_content = std::fs::read_to_string(&claude_settings_path)
-                .map_err(|e| format!("Failed to read existing Claude settings: {}", e))?;
-
-            let settings_json: Value = serde_json::from_str(&settings_content)
-                .map_err(|e| format!("Failed to parse existing Claude settings: {}", e))?;
+            let settings_json = read_json_file(&claude_settings_path, "Claude settings")?;
 
             // Create an Original Config store with existing settings
             let original_store = ConfigStore {
@@ -407,19 +366,11 @@ pub async fn create_config(
 
         // Create .claude directory if it doesn't exist
         if let Some(parent) = user_settings_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+            ensure_dir(parent, ".claude directory")?;
         }
 
         // Read existing settings if file exists, otherwise start with empty object
-        let mut existing_settings = if user_settings_path.exists() {
-            let content = std::fs::read_to_string(&user_settings_path)
-                .map_err(|e| format!("Failed to read existing settings: {}", e))?;
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse existing settings: {}", e))?
-        } else {
-            serde_json::Value::Object(serde_json::Map::new())
-        };
+        let mut existing_settings = read_json_file(&user_settings_path, "settings")?;
 
         // Merge the new settings into existing settings (partial update)
         if let Some(settings_obj) = settings.as_object() {
@@ -438,11 +389,7 @@ pub async fn create_config(
         }
 
         // Write the merged settings back to file
-        let json_content = serde_json::to_string_pretty(&existing_settings)
-            .map_err(|e| format!("Failed to serialize merged settings: {}", e))?;
-
-        std::fs::write(&user_settings_path, json_content)
-            .map_err(|e| format!("Failed to write user settings: {}", e))?;
+        write_json_file(&user_settings_path, &existing_settings, "user settings")?;
     }
 
     // Create new store
@@ -461,11 +408,7 @@ pub async fn create_config(
     stores_data.configs.push(new_store.clone());
 
     // Write back to stores file
-    let json_content = serde_json::to_string_pretty(&stores_data)
-        .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-    std::fs::write(&stores_file, json_content)
-        .map_err(|e| format!("Failed to write stores file: {}", e))?;
+    write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
     // Automatically unlock CC extension when creating new config
     if let Err(e) = unlock_cc_ext().await {
@@ -477,7 +420,7 @@ pub async fn create_config(
 
 #[tauri::command]
 pub async fn delete_config(store_id: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
@@ -486,11 +429,7 @@ pub async fn delete_config(store_id: String) -> Result<(), String> {
     }
 
     // Read existing stores
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let mut stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let mut stores_data = read_stores_file(&stores_file)?;
 
     // Find and remove store by ID
     let original_len = stores_data.configs.len();
@@ -501,18 +440,14 @@ pub async fn delete_config(store_id: String) -> Result<(), String> {
     }
 
     // Write back to file
-    let json_content = serde_json::to_string_pretty(&stores_data)
-        .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-    std::fs::write(&stores_file, json_content)
-        .map_err(|e| format!("Failed to write stores file: {}", e))?;
+    write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn set_using_config(store_id: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
@@ -521,11 +456,7 @@ pub async fn set_using_config(store_id: String) -> Result<(), String> {
     }
 
     // Read existing stores
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let mut stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let mut stores_data = read_stores_file(&stores_file)?;
 
     // Find the store and check if it exists
     let store_found = stores_data.configs.iter().any(|store| store.id == store_id);
@@ -550,19 +481,11 @@ pub async fn set_using_config(store_id: String) -> Result<(), String> {
 
         // Create .claude directory if it doesn't exist
         if let Some(parent) = user_settings_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+            ensure_dir(parent, ".claude directory")?;
         }
 
         // Read existing settings if file exists, otherwise start with empty object
-        let mut existing_settings = if user_settings_path.exists() {
-            let content = std::fs::read_to_string(&user_settings_path)
-                .map_err(|e| format!("Failed to read existing settings: {}", e))?;
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse existing settings: {}", e))?
-        } else {
-            serde_json::Value::Object(serde_json::Map::new())
-        };
+        let mut existing_settings = read_json_file(&user_settings_path, "settings")?;
 
         // Merge the new settings into existing settings (partial update)
         if let Some(settings_obj) = settings.as_object() {
@@ -581,36 +504,24 @@ pub async fn set_using_config(store_id: String) -> Result<(), String> {
         }
 
         // Write the merged settings back to file
-        let json_content = serde_json::to_string_pretty(&existing_settings)
-            .map_err(|e| format!("Failed to serialize merged settings: {}", e))?;
-
-        std::fs::write(&user_settings_path, json_content)
-            .map_err(|e| format!("Failed to write user settings: {}", e))?;
+        write_json_file(&user_settings_path, &existing_settings, "user settings")?;
     }
 
     // Write back to stores file
-    let json_content = serde_json::to_string_pretty(&stores_data)
-        .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-    std::fs::write(&stores_file, json_content)
-        .map_err(|e| format!("Failed to write stores file: {}", e))?;
+    write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn reset_to_original_config() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
     // Set all stores to not using
     if stores_file.exists() {
-        let content = std::fs::read_to_string(&stores_file)
-            .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-        let mut stores_data: StoresData = serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+        let mut stores_data = read_stores_file(&stores_file)?;
 
         // Set all stores to not using
         for store in &mut stores_data.configs {
@@ -618,11 +529,7 @@ pub async fn reset_to_original_config() -> Result<(), String> {
         }
 
         // Write back to stores file
-        let json_content = serde_json::to_string_pretty(&stores_data)
-            .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-        std::fs::write(&stores_file, json_content)
-            .map_err(|e| format!("Failed to write stores file: {}", e))?;
+        write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
     }
 
     // Clear env field in settings.json
@@ -630,19 +537,11 @@ pub async fn reset_to_original_config() -> Result<(), String> {
 
     // Create .claude directory if it doesn't exist
     if let Some(parent) = user_settings_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+        ensure_dir(parent, ".claude directory")?;
     }
 
     // Read existing settings if file exists, otherwise start with empty object
-    let mut existing_settings = if user_settings_path.exists() {
-        let content = std::fs::read_to_string(&user_settings_path)
-            .map_err(|e| format!("Failed to read existing settings: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse existing settings: {}", e))?
-    } else {
-        serde_json::Value::Object(serde_json::Map::new())
-    };
+    let mut existing_settings = read_json_file(&user_settings_path, "settings")?;
 
     // Set env to empty object
     if let Some(existing_obj) = existing_settings.as_object_mut() {
@@ -650,11 +549,7 @@ pub async fn reset_to_original_config() -> Result<(), String> {
     }
 
     // Write the merged settings back to file
-    let json_content = serde_json::to_string_pretty(&existing_settings)
-        .map_err(|e| format!("Failed to serialize merged settings: {}", e))?;
-
-    std::fs::write(&user_settings_path, json_content)
-        .map_err(|e| format!("Failed to write user settings: {}", e))?;
+    write_json_file(&user_settings_path, &existing_settings, "user settings")?;
 
     Ok(())
 }
@@ -680,7 +575,7 @@ pub async fn update_config(
     title: String,
     settings: Value,
 ) -> Result<ConfigStore, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
@@ -689,11 +584,7 @@ pub async fn update_config(
     }
 
     // Read existing stores
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let mut stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let mut stores_data = read_stores_file(&stores_file)?;
 
     // Find the store by ID
     let store_index = stores_data
@@ -720,19 +611,11 @@ pub async fn update_config(
 
         // Create .claude directory if it doesn't exist
         if let Some(parent) = user_settings_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+            ensure_dir(parent, ".claude directory")?;
         }
 
         // Read existing settings if file exists, otherwise start with empty object
-        let mut existing_settings = if user_settings_path.exists() {
-            let content = std::fs::read_to_string(&user_settings_path)
-                .map_err(|e| format!("Failed to read existing settings: {}", e))?;
-            serde_json::from_str(&content)
-                .map_err(|e| format!("Failed to parse existing settings: {}", e))?
-        } else {
-            serde_json::Value::Object(serde_json::Map::new())
-        };
+        let mut existing_settings = read_json_file(&user_settings_path, "settings")?;
 
         // Merge the new settings into existing settings (partial update)
         if let Some(settings_obj) = settings.as_object() {
@@ -751,19 +634,11 @@ pub async fn update_config(
         }
 
         // Write the merged settings back to file
-        let json_content = serde_json::to_string_pretty(&existing_settings)
-            .map_err(|e| format!("Failed to serialize merged settings: {}", e))?;
-
-        std::fs::write(&user_settings_path, json_content)
-            .map_err(|e| format!("Failed to write user settings: {}", e))?;
+        write_json_file(&user_settings_path, &existing_settings, "user settings")?;
     }
 
     // Write back to stores file
-    let json_content = serde_json::to_string_pretty(&stores_data)
-        .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-    std::fs::write(&stores_file, json_content)
-        .map_err(|e| format!("Failed to write stores file: {}", e))?;
+    write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
     // Automatically unlock CC extension when updating config
     if let Err(e) = unlock_cc_ext().await {
@@ -775,13 +650,12 @@ pub async fn update_config(
 
 #[tauri::command]
 pub async fn open_config_path() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
 
     // Ensure the directory exists
     if !app_config_path.exists() {
-        std::fs::create_dir_all(&app_config_path)
-            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+        ensure_dir(&app_config_path, "config directory")?;
     }
 
     // Open the directory in the system's file manager
@@ -814,57 +688,86 @@ pub async fn open_config_path() -> Result<(), String> {
 
 // MCP Server management functions
 
-// Helper: Read MCPJSON servers from ~/.mcp.json
-fn read_mcpjson_servers(home_dir: &std::path::Path) -> Result<serde_json::Map<String, Value>, String> {
-    let mcp_json_path = home_dir.join(".mcp.json");
-    if !mcp_json_path.exists() {
-        return Ok(serde_json::Map::new());
-    }
-    
-    let content = std::fs::read_to_string(&mcp_json_path)
-        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
-    let json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
-    
-    Ok(json_value.get("mcpServers")
-        .and_then(|s| s.as_object())
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new))
+// Helper: Read and parse stores file (returns default when file missing)
+fn read_stores_file(path: &std::path::Path) -> Result<StoresData, String> {
+    let value = read_json_file(path, "stores file")?;
+    serde_json::from_value(value).map_err(|e| format!("Failed to parse stores file: {}", e))
 }
 
-// Helper: Read Direct servers from ~/.claude.json
-fn read_direct_servers(home_dir: &std::path::Path) -> Result<serde_json::Map<String, Value>, String> {
-    let claude_json_path = home_dir.join(".claude.json");
-    if !claude_json_path.exists() {
-        return Ok(serde_json::Map::new());
+// Helper: Write serializable value as JSON file
+// Helper: Get settings file path based on cwd and preference
+fn get_settings_path(cwd: Option<&str>, prefer_local: bool) -> Result<PathBuf, String> {
+    let home_dir = home_dir()?;
+    
+    if let Some(cwd_str) = cwd {
+        if let Ok(Some(project_path)) = get_project_path_from_claude_json(cwd_str) {
+            if prefer_local {
+                // Write to ./.claude/settings.local.json (highest priority, gitignored)
+                return Ok(project_path.join(".claude/settings.local.json"));
+            } else {
+                // Read from project settings (check local first, then project)
+                let local_settings_path = project_path.join(".claude/settings.local.json");
+                if local_settings_path.exists() {
+                    return Ok(local_settings_path);
+                }
+                let project_settings_path = project_path.join(".claude/settings.json");
+                if project_settings_path.exists() {
+                    return Ok(project_settings_path);
+                }
+            }
+        }
     }
     
-    let content = std::fs::read_to_string(&claude_json_path)
-        .map_err(|e| format!("Failed to read .claude.json: {}", e))?;
-    let json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .claude.json: {}", e))?;
-    
-    Ok(json_value.get("mcpServers")
-        .and_then(|s| s.as_object())
-        .cloned()
-        .unwrap_or_else(serde_json::Map::new))
+    // Fallback to user-global settings
+    Ok(home_dir.join(".claude/settings.json"))
+}
+
+// Helper: Create McpServer struct
+fn create_mcp_server(
+    config: Value,
+    source_type: &str,
+    scope: &str,
+    defined_in: String,
+    controllable: bool,
+) -> McpServer {
+    McpServer {
+        config,
+        source_type: source_type.to_string(),
+        scope: scope.to_string(),
+        defined_in,
+        controllable,
+    }
+}
+
+// Helper: Check if plugin install should be included based on scope and cwd
+fn should_include_install(install: &PluginInstallInfo, cwd: Option<&str>) -> bool {
+    match cwd {
+        Some(cwd_str) if !cwd_str.is_empty() => {
+            install.scope == "user"
+                || (install.scope == "local" && install.project_path.as_deref() == Some(cwd_str))
+        }
+        _ => true, // Include all when cwd is None or empty (Global view)
+    }
 }
 
 #[tauri::command]
 pub async fn get_global_mcp_servers() -> Result<std::collections::HashMap<String, McpServer>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let mut result = std::collections::HashMap::new();
     
     // 1. Read from ~/.mcp.json (MCPJSON servers - user scope)
     if let Ok(mcpjson_servers) = read_mcpjson_servers(&home_dir) {
         for (name, config) in mcpjson_servers {
-            result.insert(name.clone(), McpServer {
-                config,
-                source_type: "mcpjson".to_string(),
-                scope: "user".to_string(),
-                defined_in: home_dir.join(".mcp.json").to_string_lossy().to_string(),
-                controllable: true,
-            });
+            result.insert(
+                name.clone(),
+                create_mcp_server(
+                    config,
+                    "mcpjson",
+                    "user",
+                    path_to_string(&home_dir.join(".mcp.json")),
+                    true,
+                ),
+            );
         }
     }
     
@@ -872,12 +775,14 @@ pub async fn get_global_mcp_servers() -> Result<std::collections::HashMap<String
     if let Ok(direct_servers) = read_direct_servers(&home_dir) {
         for (name, config) in direct_servers {
             // Don't override if already exists from .mcp.json
-            result.entry(name.clone()).or_insert(McpServer {
-                config,
-                source_type: "direct".to_string(),
-                scope: "user".to_string(),
-                defined_in: home_dir.join(".claude.json").to_string_lossy().to_string(),
-                controllable: false,
+            result.entry(name.clone()).or_insert_with(|| {
+                create_mcp_server(
+                    config,
+                    "direct",
+                    "user",
+                    path_to_string(&home_dir.join(".claude.json")),
+                    false,
+                )
             });
         }
     }
@@ -896,18 +801,11 @@ pub async fn update_global_mcp_server(
     server_name: String,
     server_config: Value,
 ) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let mcp_json_path = home_dir.join(".mcp.json");
 
     // Read existing .mcp.json or create new structure
-    let mut json_value = if mcp_json_path.exists() {
-        let content = std::fs::read_to_string(&mcp_json_path)
-            .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
+    let mut json_value = read_json_file(&mcp_json_path, ".mcp.json")?;
 
     // Update mcpServers object (same structure as .claude.json)
     let mcp_servers = json_value
@@ -922,18 +820,14 @@ pub async fn update_global_mcp_server(
     mcp_servers.insert(server_name, server_config);
 
     // Write back to file
-    let json_content = serde_json::to_string_pretty(&json_value)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
-
-    std::fs::write(&mcp_json_path, json_content)
-        .map_err(|e| format!("Failed to write .mcp.json: {}", e))?;
+    write_json_file(&mcp_json_path, &json_value, ".mcp.json")?;
 
     Ok(())
 }
 
 #[tauri::command]
 pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let mcp_json_path = home_dir.join(".mcp.json");
 
     if !mcp_json_path.exists() {
@@ -941,23 +835,15 @@ pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String>
     }
 
     // Read existing .mcp.json
-    let content = std::fs::read_to_string(&mcp_json_path)
-        .map_err(|e| format!("Failed to read .mcp.json: {}", e))?;
-
-    let mut json_value: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse .mcp.json: {}", e))?;
+    let mut json_value = read_json_file(&mcp_json_path, ".mcp.json")?;
 
     // Check if mcpServers exists
     let mcp_servers = json_value
         .as_object_mut()
         .unwrap()
         .get_mut("mcpServers")
-        .and_then(|servers| servers.as_object_mut());
-
-    let mcp_servers = match mcp_servers {
-        Some(servers) => servers,
-        None => return Err("No mcpServers found in .mcp.json".to_string()),
-    };
+        .and_then(|servers| servers.as_object_mut())
+        .ok_or("No mcpServers found in .mcp.json")?;
 
     // Check if the server exists
     if !mcp_servers.contains_key(&server_name) {
@@ -973,11 +859,7 @@ pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String>
     }
 
     // Write back to file
-    let json_content = serde_json::to_string_pretty(&json_value)
-        .map_err(|e| format!("Failed to serialize JSON: {}", e))?;
-
-    std::fs::write(&mcp_json_path, json_content)
-        .map_err(|e| format!("Failed to write .mcp.json: {}", e))?;
+    write_json_file(&mcp_json_path, &json_value, ".mcp.json")?;
 
     // Also remove from settings.json enabled/disabled arrays
     remove_mcp_from_settings(&server_name).await?;
@@ -987,19 +869,14 @@ pub async fn delete_global_mcp_server(server_name: String) -> Result<(), String>
 
 // Helper function to remove MCP server from settings arrays
 async fn remove_mcp_from_settings(server_name: &str) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let settings_path = home_dir.join(".claude/settings.json");
 
     if !settings_path.exists() {
         return Ok(()); // Nothing to remove if settings doesn't exist
     }
 
-    let content = std::fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-
-    let mut settings: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
-
+    let mut settings = read_json_file(&settings_path, "settings.json")?;
     let settings_obj = settings.as_object_mut()
         .ok_or("Settings is not an object")?;
 
@@ -1017,11 +894,7 @@ async fn remove_mcp_from_settings(server_name: &str) -> Result<(), String> {
         }
     }
 
-    let json_content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-    std::fs::write(&settings_path, json_content)
-        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
+    write_json_file(&settings_path, &settings, "settings.json")?;
 
     Ok(())
 }
@@ -1032,64 +905,69 @@ pub struct McpEnabledState {
     pub enabled_mcp_json_servers: Vec<String>,
     #[serde(rename = "disabledMcpjsonServers")]
     pub disabled_mcp_json_servers: Vec<String>,
+    #[serde(rename = "disabledMcpServers")]
+    pub disabled_mcp_servers: Vec<String>,  // For Direct servers
 }
 
-#[tauri::command]
-pub async fn get_mcp_enabled_state() -> Result<McpEnabledState, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let settings_path = home_dir.join(".claude/settings.json");
-
+// Helper: Read settings from a specific file path
+fn read_settings_from_file(settings_path: &std::path::Path) -> Result<McpEnabledState, String> {
     if !settings_path.exists() {
         return Ok(McpEnabledState {
             enabled_mcp_json_servers: vec![],
             disabled_mcp_json_servers: vec![],
+            disabled_mcp_servers: vec![],
         });
     }
 
-    let content = std::fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-
-    let settings: Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
-
-    let enabled = settings.get("enabledMcpjsonServers")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_else(Vec::new);
-
-    let disabled = settings.get("disabledMcpjsonServers")
-        .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-        .unwrap_or_else(Vec::new);
+    let settings = read_json_file(settings_path, "settings file")?;
 
     Ok(McpEnabledState {
-        enabled_mcp_json_servers: enabled,
-        disabled_mcp_json_servers: disabled,
+        enabled_mcp_json_servers: extract_string_array(&settings, "enabledMcpjsonServers"),
+        disabled_mcp_json_servers: extract_string_array(&settings, "disabledMcpjsonServers"),
+        disabled_mcp_servers: extract_string_array(&settings, "disabledMcpServers"),
     })
 }
 
+// Helper: Merge disabled MCP servers from .claude.json into state
+fn merge_disabled_mcp_servers(mut state: McpEnabledState, cwd: Option<&str>) -> Result<McpEnabledState, String> {
+    state.disabled_mcp_servers = read_disabled_mcp_servers_from_claude_json(cwd)?;
+    Ok(state)
+}
+
 #[tauri::command]
-pub async fn toggle_mcp_server_state(server_name: String, enabled: bool) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
-    let settings_path = home_dir.join(".claude/settings.json");
+pub async fn get_mcp_enabled_state(cwd: Option<String>) -> Result<McpEnabledState, String> {
+    let settings_path = get_settings_path(cwd.as_deref(), false)?;
+    let state = read_settings_from_file(&settings_path)?;
+    merge_disabled_mcp_servers(state, cwd.as_deref())
+}
+
+#[tauri::command]
+pub async fn toggle_mcp_server_state(server_name: String, enabled: bool, cwd: Option<String>) -> Result<(), String> {
+    // Determine target settings file based on cwd (prefer local for writing)
+    let settings_path = get_settings_path(cwd.as_deref(), true)?;
+
+    // Log the action
+    let project_info = if let Some(ref cwd_str) = cwd {
+        format!("project: {}", cwd_str)
+    } else {
+        "global".to_string()
+    };
+    let action = if enabled { "enabled" } else { "disabled" };
+    println!("🔧 MCP server {} {} - file: {}, {}", 
+        action, 
+        server_name, 
+        settings_path.display(), 
+        project_info
+    );
 
     // Ensure settings directory exists
     let settings_dir = settings_path.parent().ok_or("Failed to get settings directory")?;
     if !settings_dir.exists() {
-        std::fs::create_dir_all(settings_dir)
-            .map_err(|e| format!("Failed to create settings directory: {}", e))?;
+        ensure_dir(settings_dir, "settings directory")?;
     }
 
     // Read existing settings or create new
-    let mut settings = if settings_path.exists() {
-        let content = std::fs::read_to_string(&settings_path)
-            .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse settings.json: {}", e))?
-    } else {
-        Value::Object(serde_json::Map::new())
-    };
-
+    let mut settings = read_json_file(&settings_path, "settings file")?;
     let settings_obj = settings.as_object_mut()
         .ok_or("Settings is not an object")?;
 
@@ -1106,7 +984,10 @@ pub async fn toggle_mcp_server_state(server_name: String, enabled: bool) -> Resu
         .get_mut("enabledMcpjsonServers")
         .and_then(|v| v.as_array_mut())
     {
-        enabled_arr.retain(|v| v.as_str() != Some(&server_name));
+        enabled_arr.retain(|v: &Value| v.as_str() != Some(&server_name));
+        if enabled {
+            enabled_arr.push(Value::String(server_name.clone()));
+        }
     }
 
     // Remove from disabled array
@@ -1114,54 +995,304 @@ pub async fn toggle_mcp_server_state(server_name: String, enabled: bool) -> Resu
         .get_mut("disabledMcpjsonServers")
         .and_then(|v| v.as_array_mut())
     {
-        disabled_arr.retain(|v| v.as_str() != Some(&server_name));
-    }
-
-    // Add to appropriate array
-    if enabled {
-        if let Some(enabled_arr) = settings_obj
-            .get_mut("enabledMcpjsonServers")
-            .and_then(|v| v.as_array_mut())
-        {
-            enabled_arr.push(Value::String(server_name));
-        }
-    } else {
-        if let Some(disabled_arr) = settings_obj
-            .get_mut("disabledMcpjsonServers")
-            .and_then(|v| v.as_array_mut())
-        {
+        disabled_arr.retain(|v: &Value| v.as_str() != Some(&server_name));
+        if !enabled {
             disabled_arr.push(Value::String(server_name));
         }
     }
 
     // Write back to file
-    let json_content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-    std::fs::write(&settings_path, json_content)
-        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
+    write_json_file(&settings_path, &settings, "settings file")?;
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_mcp_servers_with_state() -> Result<Vec<McpServerState>, String> {
-    let servers = get_global_mcp_servers().await?;
-    let state = get_mcp_enabled_state().await?;
+pub async fn toggle_direct_mcp_server(
+    server_name: String,
+    enabled: bool,
+    cwd: Option<String>
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+    let claude_json_path = home_dir.join(".claude.json");
+    
+    // Log the action
+    let project_info = if let Some(ref cwd_str) = cwd {
+        format!("project: {}", cwd_str)
+    } else {
+        "global".to_string()
+    };
+    let action = if enabled { "enabled" } else { "disabled" };
+    println!("🔧 MCP server {} {} - file: {}, {}", 
+        action, 
+        server_name, 
+        claude_json_path.display(), 
+        project_info
+    );
+    
+    let mut json_value = read_json_file(&claude_json_path, ".claude.json")?;
+    let json_obj = json_value.as_object_mut().ok_or(".claude.json is not an object")?;
+    
+    // Determine target object: project-specific or root level
+    let target_obj = if let Some(ref cwd_str) = cwd {
+        // Write to .projects[cwd].disabledMcpServers
+        let projects = json_obj
+            .entry("projects".to_string())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()))
+            .as_object_mut()
+            .ok_or("projects is not an object")?;
+        
+        let project = projects
+            .entry(cwd_str.clone())
+            .or_insert_with(|| Value::Object(serde_json::Map::new()))
+            .as_object_mut()
+            .ok_or("project entry is not an object")?;
+        
+        project
+    } else {
+        // Write to root level
+        json_obj
+    };
+    
+    // Update disabledMcpServers array
+    let disabled_arr = target_obj
+        .entry("disabledMcpServers".to_string())
+        .or_insert_with(|| Value::Array(vec![]))
+        .as_array_mut()
+        .ok_or("disabledMcpServers is not an array")?;
+    
+    disabled_arr.retain(|v| v.as_str() != Some(&server_name));
+    
+    if !enabled {
+        disabled_arr.push(Value::String(server_name));
+    }
+    
+    // Write back
+    write_json_file(&claude_json_path, &json_value, ".claude.json")?;
+    
+    Ok(())
+}
+
+// Helper: Read MCP servers from enabled plugins.
+// When cwd is None (Global): include all installs (user + every project's local).
+// When cwd is Some(path): include only user-scope installs + local-scope installs for that project.
+fn read_plugin_mcp_servers(cwd: Option<&str>) -> Result<Vec<(String, serde_json::Map<String, Value>, String, String)>, String> {
+    let home_dir = home_dir()?;
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+    
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+    
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+    
+    let mut enabled_cache: std::collections::HashMap<PathBuf, std::collections::HashMap<String, bool>> =
+        std::collections::HashMap::new();
+    let mut result = Vec::new();
+    
+    for (plugin_name, installs) in installed.plugins {
+        for install in installs {
+            // Filter by scope when a project is selected
+            if !should_include_install(&install, cwd) {
+                continue;
+            }
+            let enabled = if let Some(path) =
+                enabled_plugins_settings_path(&home_dir, &install.scope, install.project_path.as_ref())
+            {
+                let map = enabled_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
+                map.get(&plugin_name).copied().unwrap_or(true)
+            } else {
+                true
+            };
+            if !enabled {
+                continue;
+            }
+            
+            let packages = detect_packages(&install.install_path)?;
+            if !packages.has_mcp {
+                continue;
+            }
+            
+            // Read .mcp.json from plugin directory
+            let plugin_mcp_path = std::path::Path::new(&install.install_path).join(".mcp.json");
+            if !plugin_mcp_path.exists() {
+                continue;
+            }
+            
+            let json_value = read_json_file(&plugin_mcp_path, "plugin .mcp.json")?;
+            
+            // Try standard format: mcpServers as object (server name -> config)
+            if let Some(mcp_servers) = json_value.get("mcpServers").and_then(|s| s.as_object()) {
+                for (server_name, server_config) in mcp_servers {
+                    if let Some(obj) = server_config.as_object() {
+                        result.push((
+                            server_name.clone(),
+                            obj.clone(),
+                            plugin_name.clone(),
+                            install.scope.clone(),
+                        ));
+                    }
+                }
+                continue;
+            }
+            
+            // Try alternative format: mcpServers as array of configs
+            if let Some(arr) = json_value.get("mcpServers").and_then(|s| s.as_array()) {
+                for (i, item) in arr.iter().enumerate() {
+                    if let Some(obj) = item.as_object() {
+                        let name = obj
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .map(String::from)
+                            .unwrap_or_else(|| format!("{}-{}", plugin_name, i));
+                        result.push((
+                            name,
+                            obj.clone(),
+                            plugin_name.clone(),
+                            install.scope.clone(),
+                        ));
+                    }
+                }
+                continue;
+            }
+            
+            // Try alternative format: top-level object is the single server config (no mcpServers wrapper)
+            if json_value.get("mcpServers").is_none() {
+                if let Some(obj) = json_value.as_object() {
+                    result.push((
+                        plugin_name.clone(),
+                        obj.clone(),
+                        plugin_name.clone(),
+                        install.scope.clone(),
+                    ));
+                }
+            }
+        }
+    }
+    
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_mcp_servers_with_state(cwd: Option<String>) -> Result<Vec<McpServerState>, String> {
+    let mut servers_map: std::collections::HashMap<String, McpServer> = std::collections::HashMap::new();
+    let home_dir = home_dir()?;
+    
+    // Priority 1 (lowest): User-global from ~/.mcp.json and ~/.claude.json
+    if let Ok(user_mcpjson) = read_mcpjson_servers(&home_dir) {
+        for (name, config) in user_mcpjson {
+            servers_map.insert(
+                name.clone(),
+                create_mcp_server(
+                    config,
+                    "mcpjson",
+                    "user",
+                    path_to_string(&home_dir.join(".mcp.json")),
+                    true,
+                ),
+            );
+        }
+    }
+    
+    if let Ok(user_direct) = read_direct_servers(&home_dir) {
+        for (name, config) in user_direct {
+            servers_map.entry(name.clone()).or_insert_with(|| {
+                create_mcp_server(
+                    config,
+                    "direct",
+                    "user",
+                    path_to_string(&home_dir.join(".claude.json")),
+                    false,
+                )
+            });
+        }
+    }
+    
+    // Priority 1.5: Plugin MCP servers (between user-global and project)
+    if let Ok(plugin_servers) = read_plugin_mcp_servers(cwd.as_deref()) {
+        for (name, config, plugin_name, plugin_scope) in plugin_servers {
+            servers_map.entry(name.clone()).or_insert_with(|| {
+                create_mcp_server(
+                    Value::Object(config),
+                    "plugin",
+                    &format!("plugin-{}", plugin_scope),
+                    format!("Plugin: {} ({})", plugin_name, plugin_scope),
+                    true,
+                )
+            });
+        }
+    }
+    
+    // Priority 2: Project scope (if cwd provided)
+    if let Some(ref cwd_str) = cwd {
+        if let Ok(project_servers) = read_project_mcp_servers(cwd_str) {
+            for (name, config) in project_servers {
+                servers_map.insert(
+                    name.clone(),
+                    create_mcp_server(
+                        config,
+                        "direct",
+                        "project",
+                        format!("~/.claude.json .projects[{}]", cwd_str),
+                        false,
+                    ),
+                );
+            }
+        }
+    }
+    
+    // Priority 3 (highest): Local scope (if cwd provided and project path exists)
+    if let Some(ref cwd_str) = cwd {
+        if let Ok(Some(project_path)) = get_project_path_from_claude_json(cwd_str) {
+            if let Ok(local_servers) = read_local_mcp_servers(&project_path) {
+                for (name, config) in local_servers {
+                    servers_map.insert(
+                        name.clone(),
+                        create_mcp_server(
+                            config,
+                            "mcpjson",
+                            "local",
+                            path_to_string(&project_path.join(".mcp.json")),
+                            true,
+                        ),
+                    );
+                }
+            }
+        }
+    }
+    
+    // Get enabled/disabled state and compute final state
+    let state = get_mcp_enabled_state(cwd.clone()).await?;
     
     let mut result = Vec::new();
     
-    for (name, server) in servers {
+    for (name, server) in servers_map {
         let in_enabled = state.enabled_mcp_json_servers.contains(&name);
         let in_disabled = state.disabled_mcp_json_servers.contains(&name);
         
-        // Compute state based on three-state logic
-        let computed_state = if in_disabled && !in_enabled {
-            "disabled"  // Completely disabled
-        } else if in_enabled && in_disabled {
-            "runtime-disabled"  // Configured but temporarily disabled
+        // Compute state based on source type and arrays
+        let computed_state = if server.source_type == "direct" {
+            // For Direct servers, check disabledMcpServers
+            if state.disabled_mcp_servers.contains(&name) {
+                "disabled"
+            } else {
+                "enabled"
+            }
         } else {
-            "enabled"  // Default or explicitly enabled
+            // For MCPJSON servers, use three-state logic
+            if in_disabled && !in_enabled {
+                "disabled"  // Completely disabled
+            } else if in_enabled && in_disabled {
+                "runtime-disabled"  // Configured but temporarily disabled
+            } else {
+                "enabled"  // Default or explicitly enabled
+            }
         };
         
         result.push(McpServerState {
@@ -1176,6 +1307,9 @@ pub async fn get_mcp_servers_with_state() -> Result<Vec<McpServerState>, String>
             in_disabled_array: in_disabled,
         });
     }
+    
+    // Sort by name for consistent ordering
+    result.sort_by(|a, b| a.name.cmp(&b.name));
     
     Ok(result)
 }
@@ -1245,13 +1379,12 @@ pub async fn rebuild_tray_menu_command(app: tauri::AppHandle) -> Result<(), Stri
 
 #[tauri::command]
 pub async fn unlock_cc_ext() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_config_path = home_dir.join(".claude/config.json");
 
     // Ensure .claude directory exists
     if let Some(parent) = claude_config_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+        ensure_dir(parent, ".claude directory")?;
     }
 
     if claude_config_path.exists() {
@@ -1315,7 +1448,7 @@ pub struct ProjectUsageRecord {
 
 #[tauri::command]
 pub async fn read_project_usage_files() -> Result<Vec<ProjectUsageRecord>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let projects_dir = home_dir.join(".claude/projects");
 
     println!("🔍 Looking for projects directory: {}", projects_dir.display());
@@ -1453,10 +1586,10 @@ pub struct MemoryFile {
 
 #[tauri::command]
 pub async fn read_claude_memory() -> Result<MemoryFile, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_md_path = home_dir.join(".claude/CLAUDE.md");
 
-    let path_str = claude_md_path.to_string_lossy().to_string();
+    let path_str = path_to_string(&claude_md_path);
 
     if claude_md_path.exists() {
         let content = std::fs::read_to_string(&claude_md_path)
@@ -1478,13 +1611,12 @@ pub async fn read_claude_memory() -> Result<MemoryFile, String> {
 
 #[tauri::command]
 pub async fn write_claude_memory(content: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_md_path = home_dir.join(".claude/CLAUDE.md");
 
     // Ensure .claude directory exists
     if let Some(parent) = claude_md_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+        ensure_dir(parent, ".claude directory")?;
     }
 
     std::fs::write(&claude_md_path, content)
@@ -1559,21 +1691,16 @@ pub async fn install_and_restart(app: tauri::AppHandle) -> Result<(), String> {
 
 // Get or create distinct_id from stores.json
 async fn get_or_create_distinct_id() -> Result<String, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
     // Ensure app config directory exists
-    std::fs::create_dir_all(&app_config_path)
-        .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+    ensure_dir(&app_config_path, "app config directory")?;
 
     // Read existing stores.json or create new one
     let mut stores_data = if stores_file.exists() {
-        let content = std::fs::read_to_string(&stores_file)
-            .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-        serde_json::from_str::<StoresData>(&content)
-            .map_err(|e| format!("Failed to parse stores file: {}", e))?
+        read_stores_file(&stores_file)?
     } else {
         StoresData {
             configs: vec![],
@@ -1594,11 +1721,7 @@ async fn get_or_create_distinct_id() -> Result<String, String> {
         stores_data.distinct_id = Some(new_id.clone());
 
         // Write back to stores.json
-        let json_content = serde_json::to_string_pretty(&stores_data)
-            .map_err(|e| format!("Failed to serialize stores data: {}", e))?;
-
-        std::fs::write(&stores_file, json_content)
-            .map_err(|e| format!("Failed to write stores file: {}", e))?;
+        write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
         println!("Created new distinct_id: {}", new_id);
         Ok(new_id)
@@ -1694,7 +1817,7 @@ pub struct ProjectConfig {
 
 #[tauri::command]
 pub async fn read_claude_projects() -> Result<Vec<ProjectConfig>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_json_path = home_dir.join(".claude.json");
 
     if !claude_json_path.exists() {
@@ -1733,10 +1856,10 @@ pub struct ClaudeConfigFile {
 
 #[tauri::command]
 pub async fn read_claude_config_file() -> Result<ClaudeConfigFile, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_json_path = home_dir.join(".claude.json");
 
-    let path_str = claude_json_path.to_string_lossy().to_string();
+    let path_str = path_to_string(&claude_json_path);
 
     if claude_json_path.exists() {
         let content = std::fs::read_to_string(&claude_json_path)
@@ -1761,7 +1884,7 @@ pub async fn read_claude_config_file() -> Result<ClaudeConfigFile, String> {
 
 #[tauri::command]
 pub async fn write_claude_config_file(content: Value) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let claude_json_path = home_dir.join(".claude.json");
 
     let json_content = serde_json::to_string_pretty(&content)
@@ -1944,7 +2067,7 @@ fn update_or_add_hooks(hooks_obj: &mut serde_json::Map<String, serde_json::Value
 
 #[tauri::command]
 pub async fn get_notification_settings() -> Result<Option<NotificationSettings>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
@@ -1952,18 +2075,14 @@ pub async fn get_notification_settings() -> Result<Option<NotificationSettings>,
         return Ok(None);
     }
 
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let stores_data = read_stores_file(&stores_file)?;
 
     Ok(stores_data.notification)
 }
 
 #[tauri::command]
 pub async fn update_claude_code_hook() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let settings_path = home_dir.join(".claude/settings.json");
 
     if !settings_path.exists() {
@@ -1972,11 +2091,7 @@ pub async fn update_claude_code_hook() -> Result<(), String> {
     }
 
     // Read existing settings
-    let content = std::fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-
-    let mut settings: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
+    let mut settings = read_json_file(&settings_path, "settings.json")?;
 
     // Ensure hooks object exists
     let hooks_obj = settings
@@ -1993,17 +2108,12 @@ pub async fn update_claude_code_hook() -> Result<(), String> {
 
     if hook_updated {
         // Write back to settings file
-        let json_content = serde_json::to_string_pretty(&settings)
-            .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
         // Create .claude directory if it doesn't exist
         if let Some(parent) = settings_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+            ensure_dir(parent, ".claude directory")?;
         }
 
-        std::fs::write(&settings_path, json_content)
-            .map_err(|e| format!("Failed to write settings.json: {}", e))?;
+        write_json_file(&settings_path, &settings, "settings.json")?;
 
         println!("✅ Claude Code hooks updated successfully");
     } else {
@@ -2015,18 +2125,11 @@ pub async fn update_claude_code_hook() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn add_claude_code_hook() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let settings_path = home_dir.join(".claude/settings.json");
 
     // Read existing settings or create new structure
-    let mut settings = if settings_path.exists() {
-        let content = std::fs::read_to_string(&settings_path)
-            .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse settings.json: {}", e))?
-    } else {
-        serde_json::Value::Object(serde_json::Map::new())
-    };
+    let mut settings = read_json_file(&settings_path, "settings.json")?;
 
     // Ensure hooks object exists
     let hooks_obj = settings
@@ -2042,25 +2145,19 @@ pub async fn add_claude_code_hook() -> Result<(), String> {
     update_or_add_hooks(hooks_obj, &events)?;
 
     // Write back to settings file
-    let json_content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
     // Create .claude directory if it doesn't exist
     if let Some(parent) = settings_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create .claude directory: {}", e))?;
+        ensure_dir(parent, ".claude directory")?;
     }
 
-    std::fs::write(&settings_path, json_content)
-        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
-
+    write_json_file(&settings_path, &settings, "settings.json")?;
     println!("✅ Claude Code hooks added successfully");
     Ok(())
 }
 
 #[tauri::command]
 pub async fn remove_claude_code_hook() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let settings_path = home_dir.join(".claude/settings.json");
 
     if !settings_path.exists() {
@@ -2068,11 +2165,7 @@ pub async fn remove_claude_code_hook() -> Result<(), String> {
     }
 
     // Read existing settings
-    let content = std::fs::read_to_string(&settings_path)
-        .map_err(|e| format!("Failed to read settings.json: {}", e))?;
-
-    let mut settings: serde_json::Value = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse settings.json: {}", e))?;
+    let mut settings = read_json_file(&settings_path, "settings.json")?;
 
     // Check if hooks object exists
     if let Some(hooks_obj) = settings.get_mut("hooks").and_then(|h| h.as_object_mut()) {
@@ -2117,19 +2210,14 @@ pub async fn remove_claude_code_hook() -> Result<(), String> {
     }
 
     // Write back to settings file
-    let json_content = serde_json::to_string_pretty(&settings)
-        .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-
-    std::fs::write(&settings_path, json_content)
-        .map_err(|e| format!("Failed to write settings.json: {}", e))?;
-
+    write_json_file(&settings_path, &settings, "settings.json")?;
     println!("✅ Claude Code hooks removed successfully");
     Ok(())
 }
 
 #[tauri::command]
 pub async fn update_notification_settings(settings: NotificationSettings) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let app_config_path = home_dir.join(APP_CONFIG_DIR);
     let stores_file = app_config_path.join("stores.json");
 
@@ -2142,35 +2230,22 @@ pub async fn update_notification_settings(settings: NotificationSettings) -> Res
         };
 
         // Ensure app config directory exists
-        std::fs::create_dir_all(&app_config_path)
-            .map_err(|e| format!("Failed to create app config directory: {}", e))?;
+        ensure_dir(&app_config_path, "app config directory")?;
 
-        let json_content = serde_json::to_string_pretty(&stores_data)
-            .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-        std::fs::write(&stores_file, json_content)
-            .map_err(|e| format!("Failed to write stores file: {}", e))?;
+        write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
         println!("Created stores.json with notification settings");
         return Ok(());
     }
 
     // Read existing stores
-    let content = std::fs::read_to_string(&stores_file)
-        .map_err(|e| format!("Failed to read stores file: {}", e))?;
-
-    let mut stores_data: StoresData = serde_json::from_str(&content)
-        .map_err(|e| format!("Failed to parse stores file: {}", e))?;
+    let mut stores_data = read_stores_file(&stores_file)?;
 
     // Update notification settings
     stores_data.notification = Some(settings);
 
     // Write back to stores file
-    let json_content = serde_json::to_string_pretty(&stores_data)
-        .map_err(|e| format!("Failed to serialize stores: {}", e))?;
-
-    std::fs::write(&stores_file, json_content)
-        .map_err(|e| format!("Failed to write stores file: {}", e))?;
+    write_json_file_serialize(&stores_file, &stores_data, "stores file")?;
 
     println!("✅ Notification settings updated successfully");
     Ok(())
@@ -2188,7 +2263,7 @@ pub struct CommandFile {
 
 #[tauri::command]
 pub async fn read_claude_commands() -> Result<Vec<CommandFile>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let commands_dir = home_dir.join(".claude/commands");
 
     if !commands_dir.exists() {
@@ -2248,13 +2323,12 @@ pub async fn read_claude_commands() -> Result<Vec<CommandFile>, String> {
 
 #[tauri::command]
 pub async fn write_claude_command(command_name: String, content: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let commands_dir = home_dir.join(".claude/commands");
     let command_file_path = commands_dir.join(format!("{}.md", command_name));
 
     // Ensure .claude/commands directory exists
-    std::fs::create_dir_all(&commands_dir)
-        .map_err(|e| format!("Failed to create .claude/commands directory: {}", e))?;
+    ensure_dir(&commands_dir, ".claude/commands directory")?;
 
     std::fs::write(&command_file_path, content)
         .map_err(|e| format!("Failed to write command file: {}", e))?;
@@ -2264,7 +2338,7 @@ pub async fn write_claude_command(command_name: String, content: String) -> Resu
 
 #[tauri::command]
 pub async fn delete_claude_command(command_name: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let commands_dir = home_dir.join(".claude/commands");
     let command_file_path = commands_dir.join(format!("{}.md", command_name));
 
@@ -2278,7 +2352,7 @@ pub async fn delete_claude_command(command_name: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn toggle_claude_command(command_name: String, disabled: bool) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let commands_dir = home_dir.join(".claude/commands");
 
     let (source_path, target_path) = if disabled {
@@ -2317,9 +2391,22 @@ pub struct AgentFile {
     pub exists: bool,
 }
 
+#[derive(serde::Serialize)]
+pub struct PluginAgentFile {
+    pub name: String,
+    pub content: String,
+    pub exists: bool,
+    #[serde(rename = "pluginName")]
+    pub plugin_name: String,
+    #[serde(rename = "pluginScope")]
+    pub plugin_scope: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
 #[tauri::command]
 pub async fn read_claude_agents() -> Result<Vec<AgentFile>, String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let agents_dir = home_dir.join(".claude/agents");
 
     if !agents_dir.exists() {
@@ -2361,13 +2448,12 @@ pub async fn read_claude_agents() -> Result<Vec<AgentFile>, String> {
 
 #[tauri::command]
 pub async fn write_claude_agent(agent_name: String, content: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let agents_dir = home_dir.join(".claude/agents");
     let agent_file_path = agents_dir.join(format!("{}.md", agent_name));
 
     // Ensure .claude/agents directory exists
-    std::fs::create_dir_all(&agents_dir)
-        .map_err(|e| format!("Failed to create .claude/agents directory: {}", e))?;
+    ensure_dir(&agents_dir, ".claude/agents directory")?;
 
     std::fs::write(&agent_file_path, content)
         .map_err(|e| format!("Failed to write agent file: {}", e))?;
@@ -2377,7 +2463,7 @@ pub async fn write_claude_agent(agent_name: String, content: String) -> Result<(
 
 #[tauri::command]
 pub async fn delete_claude_agent(agent_name: String) -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Could not find home directory")?;
+    let home_dir = home_dir()?;
     let agents_dir = home_dir.join(".claude/agents");
     let agent_file_path = agents_dir.join(format!("{}.md", agent_name));
 
@@ -2387,4 +2473,431 @@ pub async fn delete_claude_agent(agent_name: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn read_plugin_agents() -> Result<Vec<PluginAgentFile>, String> {
+    let home_dir = home_dir()?;
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+    
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+    
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+    
+    let mut enabled_cache: std::collections::HashMap<PathBuf, std::collections::HashMap<String, bool>> =
+        std::collections::HashMap::new();
+    let mut result = Vec::new();
+    
+    for (plugin_name, installs) in installed.plugins {
+        for install in installs {
+            let enabled = if let Some(path) =
+                enabled_plugins_settings_path(&home_dir, &install.scope, install.project_path.as_ref())
+            {
+                let map = enabled_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
+                map.get(&plugin_name).copied().unwrap_or(true)
+            } else {
+                true
+            };
+            if !enabled {
+                continue;
+            }
+            
+            let packages = detect_packages(&install.install_path)?;
+            
+            // Skip if plugin doesn't have agents
+            if !packages.has_agents {
+                continue;
+            }
+            
+            // Walk the agents directory
+            let agents_dir = std::path::Path::new(&install.install_path).join("agents");
+            
+            if !agents_dir.exists() || !agents_dir.is_dir() {
+                continue;
+            }
+            
+            // Read all .md files in the agents directory
+            let entries = std::fs::read_dir(&agents_dir)
+                .map_err(|e| format!("Failed to read agents directory: {}", e))?;
+            
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+                let path = entry.path();
+                
+                if path.is_file() && path.extension().map(|ext| ext == "md").unwrap_or(false) {
+                    let agent_name = path.file_stem()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("unknown")
+                        .to_string();
+                    
+                    let content = std::fs::read_to_string(&path)
+                        .map_err(|e| format!("Failed to read agent file {}: {}", path.display(), e))?;
+                    
+                    result.push(PluginAgentFile {
+                        name: agent_name,
+                        content,
+                        exists: true,
+                        plugin_name: plugin_name.clone(),
+                        plugin_scope: install.scope.clone(),
+                        source_path: path_to_string(&path),
+                    });
+                }
+            }
+        }
+    }
+    
+    // Sort agents alphabetically by name
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    
+    Ok(result)
+}
+
+// Plugin management structures and functions
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct PluginInstallInfo {
+    pub scope: String,
+    #[serde(rename = "installPath")]
+    pub install_path: String,
+    pub version: String,
+    #[serde(rename = "installedAt")]
+    pub installed_at: String,
+    #[serde(rename = "lastUpdated")]
+    pub last_updated: String,
+    #[serde(rename = "gitCommitSha")]
+    pub git_commit_sha: String,
+    #[serde(rename = "projectPath", skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct InstalledPluginsFile {
+    pub plugins: std::collections::HashMap<String, Vec<PluginInstallInfo>>,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct PluginPackages {
+    #[serde(rename = "hasAgents")]
+    pub has_agents: bool,
+    #[serde(rename = "hasSkills")]
+    pub has_skills: bool,
+    #[serde(rename = "hasCommands")]
+    pub has_commands: bool,
+    #[serde(rename = "hasMcp")]
+    pub has_mcp: bool,
+}
+
+#[derive(serde::Serialize)]
+pub struct PluginInfo {
+    pub name: String,
+    pub scope: String,
+    pub version: String,
+    #[serde(rename = "projectPath")]
+    pub project_path: Option<String>,
+    pub enabled: bool,
+    pub packages: PluginPackages,
+    #[serde(rename = "installPath")]
+    pub install_path: String,
+    #[serde(rename = "installedAt")]
+    pub installed_at: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct PluginCommandFile {
+    pub name: String,
+    pub content: String,
+    pub exists: bool,
+    pub disabled: bool,
+    #[serde(rename = "pluginName")]
+    pub plugin_name: String,
+    #[serde(rename = "pluginScope")]
+    pub plugin_scope: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
+fn detect_packages(install_path: &str) -> Result<PluginPackages, String> {
+    let path = std::path::Path::new(install_path);
+    
+    // Check if install path exists
+    if !path.exists() {
+        println!("Warning: Install path does not exist: {}", install_path);
+        return Ok(PluginPackages {
+            has_agents: false,
+            has_skills: false,
+            has_commands: false,
+            has_mcp: false,
+        });
+    }
+    
+    // List contents of install path for debugging
+    if let Ok(entries) = std::fs::read_dir(path) {
+        println!("Contents of {}: ", install_path);
+        for entry in entries.flatten() {
+            if let Ok(file_type) = entry.file_type() {
+                let name = entry.file_name();
+                let type_str = if file_type.is_dir() { "DIR" } else { "FILE" };
+                println!("  {} - {:?}", type_str, name);
+            }
+        }
+    }
+    
+    let agents_path = path.join("agents");
+    let skills_path = path.join("skills");
+    let commands_path = path.join("commands");
+    let mcp_path = path.join(".mcp.json");
+    
+    let has_agents = agents_path.exists() && agents_path.is_dir();
+    let has_skills = skills_path.exists() && skills_path.is_dir();
+    let has_commands = commands_path.exists() && commands_path.is_dir();
+    let has_mcp = mcp_path.exists() && mcp_path.is_file();
+    
+    println!("Package detection for {}: agents={}, skills={}, commands={}, mcp={}", 
+             install_path, has_agents, has_skills, has_commands, has_mcp);
+    
+    Ok(PluginPackages {
+        has_agents,
+        has_skills,
+        has_commands,
+        has_mcp,
+    })
+}
+
+fn read_enabled_plugins(settings_path: &std::path::Path) -> Result<std::collections::HashMap<String, bool>, String> {
+    let settings = read_json_file(settings_path, "settings")?;
+    
+    let mut result = std::collections::HashMap::new();
+    
+    if let Some(enabled_plugins) = settings.get("enabledPlugins").and_then(|v| v.as_object()) {
+        for (key, value) in enabled_plugins {
+            if let Some(enabled) = value.as_bool() {
+                result.insert(key.clone(), enabled);
+            }
+        }
+    }
+    
+    Ok(result)
+}
+
+fn enabled_plugins_settings_path(
+    home_dir: &std::path::Path,
+    scope: &str,
+    project_path: Option<&String>,
+) -> Option<PathBuf> {
+    if scope == "local" {
+        project_path.map(|p| PathBuf::from(p).join(".claude/settings.local.json"))
+    } else {
+        Some(home_dir.join(".claude/settings.json"))
+    }
+}
+
+#[tauri::command]
+pub async fn read_installed_plugins() -> Result<Vec<PluginInfo>, String> {
+    let home_dir = home_dir()?;
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+    
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+    
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+    
+    let mut enabled_cache: std::collections::HashMap<PathBuf, std::collections::HashMap<String, bool>> =
+        std::collections::HashMap::new();
+    let mut result = Vec::new();
+    
+    for (plugin_name, installs) in installed.plugins {
+        for install in installs {
+            let enabled = if let Some(path) =
+                enabled_plugins_settings_path(&home_dir, &install.scope, install.project_path.as_ref())
+            {
+                let map = enabled_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
+                map.get(&plugin_name).copied().unwrap_or(true)
+            } else {
+                true
+            };
+            
+            let packages = detect_packages(&install.install_path)?;
+            
+            println!("Plugin: {} | Scope: {} | ProjectPath: {:?}", 
+                     plugin_name, install.scope, install.project_path);
+            
+            result.push(PluginInfo {
+                name: plugin_name.clone(),
+                scope: install.scope,
+                version: install.version,
+                project_path: install.project_path,
+                enabled,
+                packages,
+                install_path: install.install_path,
+                installed_at: install.installed_at.clone(),
+            });
+        }
+    }
+    
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn toggle_plugin(
+    plugin_name: String,
+    enabled: bool,
+    scope: String,
+    project_path: Option<String>
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+    
+    // Determine settings file based on scope
+    let settings_path = if scope == "local" {
+        if let Some(proj_path) = project_path {
+            std::path::PathBuf::from(proj_path).join(".claude/settings.local.json")
+        } else {
+            return Err("Project path required for local scope".to_string());
+        }
+    } else {
+        home_dir.join(".claude/settings.json")
+    };
+    
+    // Ensure directory exists
+    if let Some(parent) = settings_path.parent() {
+        if !parent.exists() {
+            ensure_dir(parent, "directory")?;
+        }
+    }
+    
+    // Read or create settings
+    let mut settings = read_json_file(&settings_path, "settings")?;
+
+    // Update enabledPlugins
+    let settings_obj = settings.as_object_mut()
+        .ok_or("Settings is not an object")?;
+    
+    let enabled_plugins = settings_obj
+        .entry("enabledPlugins".to_string())
+        .or_insert_with(|| Value::Object(serde_json::Map::new()))
+        .as_object_mut()
+        .ok_or("enabledPlugins is not an object")?;
+    
+    enabled_plugins.insert(plugin_name, Value::Bool(enabled));
+    
+    // Write back
+    write_json_file(&settings_path, &settings, "settings")?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn read_plugin_commands() -> Result<Vec<PluginCommandFile>, String> {
+    let home_dir = home_dir()?;
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+    
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+    
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+    
+    let mut enabled_cache: std::collections::HashMap<PathBuf, std::collections::HashMap<String, bool>> =
+        std::collections::HashMap::new();
+    let mut result = Vec::new();
+    
+    for (plugin_name, installs) in installed.plugins {
+        for install in installs {
+            let enabled = if let Some(path) =
+                enabled_plugins_settings_path(&home_dir, &install.scope, install.project_path.as_ref())
+            {
+                let map = enabled_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
+                map.get(&plugin_name).copied().unwrap_or(true)
+            } else {
+                true
+            };
+            if !enabled {
+                continue;
+            }
+            
+            let packages = detect_packages(&install.install_path)?;
+            
+            // Skip if plugin doesn't have commands
+            if !packages.has_commands {
+                continue;
+            }
+            
+            // Walk the commands directory
+            let commands_dir = std::path::Path::new(&install.install_path).join("commands");
+            
+            if !commands_dir.exists() || !commands_dir.is_dir() {
+                continue;
+            }
+            
+            // Read all .md and .md.disabled files in the commands directory
+            let entries = std::fs::read_dir(&commands_dir)
+                .map_err(|e| format!("Failed to read commands directory: {}", e))?;
+            
+            for entry in entries {
+                let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+                let path = entry.path();
+                
+                if path.is_file() {
+                    let file_name_str = path.file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("");
+                    
+                    // Check if it's a .md or .md.disabled file
+                    let (is_command_file, is_disabled) = if file_name_str.ends_with(".md.disabled") {
+                        (true, true)
+                    } else if file_name_str.ends_with(".md") {
+                        (true, false)
+                    } else {
+                        (false, false)
+                    };
+                    
+                    if is_command_file {
+                        // Extract the command name (without .md or .md.disabled)
+                        let command_name = if is_disabled {
+                            file_name_str.trim_end_matches(".md.disabled").to_string()
+                        } else {
+                            file_name_str.trim_end_matches(".md").to_string()
+                        };
+                        
+                        let content = std::fs::read_to_string(&path)
+                            .map_err(|e| format!("Failed to read command file {}: {}", path.display(), e))?;
+                        
+                        result.push(PluginCommandFile {
+                            name: command_name,
+                            content,
+                            exists: true,
+                            disabled: is_disabled,
+                            plugin_name: plugin_name.clone(),
+                            plugin_scope: install.scope.clone(),
+                            source_path: path_to_string(&path),
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort commands alphabetically by name
+    result.sort_by(|a, b| a.name.cmp(&b.name));
+    
+    Ok(result)
 }

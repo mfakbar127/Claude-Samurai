@@ -1,7 +1,5 @@
-import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { yamlFrontmatter } from "@codemirror/lang-yaml";
 import { ask, message } from "@tauri-apps/plugin-dialog";
-import CodeMirror, { EditorView } from "@uiw/react-codemirror";
+import CodeMirror from "@uiw/react-codemirror";
 import { PlusIcon, SaveIcon, TerminalIcon, TrashIcon } from "lucide-react";
 import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,23 +22,61 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { codeMirrorBasicSetup, markdownExtensions } from "@/lib/codemirror-config";
 import {
 	useClaudeCommands,
 	useDeleteClaudeCommand,
+	usePluginCommands,
 	useToggleClaudeCommand,
 	useWriteClaudeCommand,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 
+type UnifiedCommand = {
+	name: string;
+	content: string;
+	exists: boolean;
+	disabled: boolean;
+	source: "user" | "plugin";
+	pluginName?: string;
+	pluginScope?: string;
+	sourcePath: string;
+};
+
 function CommandsPageContent() {
 	const { t } = useTranslation();
-	const { data: commands, isLoading, error } = useClaudeCommands();
+	const { data: userCommands, isLoading: isLoadingUser, error: errorUser } = useClaudeCommands();
+	const { data: pluginCommands, isLoading: isLoadingPlugin, error: errorPlugin } = usePluginCommands();
 	const writeCommand = useWriteClaudeCommand();
 	const deleteCommand = useDeleteClaudeCommand();
 	const toggleCommand = useToggleClaudeCommand();
 	const [commandEdits, setCommandEdits] = useState<Record<string, string>>({});
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
+
+	const isLoading = isLoadingUser || isLoadingPlugin;
+	const error = errorUser || errorPlugin;
+
+	const commands: UnifiedCommand[] = [
+		...(userCommands || []).map((cmd): UnifiedCommand => ({
+			name: cmd.name,
+			content: cmd.content,
+			exists: cmd.exists,
+			disabled: cmd.disabled,
+			source: "user",
+			sourcePath: `~/.claude/commands/${cmd.name}.md${cmd.disabled ? '.disabled' : ''}`,
+		})),
+		...(pluginCommands || []).map((cmd): UnifiedCommand => ({
+			name: cmd.name,
+			content: cmd.content,
+			exists: cmd.exists,
+			disabled: cmd.disabled,
+			source: "plugin",
+			pluginName: cmd.pluginName,
+			pluginScope: cmd.pluginScope,
+			sourcePath: cmd.sourcePath,
+		})),
+	].sort((a, b) => a.name.localeCompare(b.name));
 
 	if (isLoading) {
 		return (
@@ -93,9 +129,9 @@ function CommandsPageContent() {
 	};
 
 	return (
-		<div className="">
+		<div>
 			<div
-				className="flex items-center p-3 border-b px-3 justify-between sticky top-0 bg-background z-10"
+				className="flex items-center justify-between sticky top-0 z-10 border-b p-3 bg-background"
 				data-tauri-drag-region
 			>
 				<div data-tauri-drag-region>
@@ -115,9 +151,7 @@ function CommandsPageContent() {
 					</DialogTrigger>
 					<DialogContent className="max-w-[600px]">
 						<DialogHeader>
-							<DialogTitle className="">
-								{t("commands.addCommandTitle")}
-							</DialogTitle>
+							<DialogTitle>{t("commands.addCommandTitle")}</DialogTitle>
 							<DialogDescription className="text-muted-foreground text-sm">
 								{t("commands.addCommandDescription")}
 							</DialogDescription>
@@ -126,15 +160,15 @@ function CommandsPageContent() {
 					</DialogContent>
 				</Dialog>
 			</div>
-			<div className="">
-				{!commands || commands.length === 0 ? (
+			<div>
+				{commands.length === 0 ? (
 					<div className="text-center text-muted-foreground py-8">
 						{t("commands.noCommands")}
 					</div>
 				) : (
 					<ScrollArea className="h-full">
-						<div className="">
-							<Accordion type="multiple" className="">
+						<div>
+							<Accordion type="multiple">
 								{commands.map((command) => (
 									<AccordionItem
 										key={command.name}
@@ -142,14 +176,28 @@ function CommandsPageContent() {
 										className="bg-card"
 									>
 										<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
-											<div className="flex items-center gap-2">
+											<div className="flex items-center gap-2 flex-wrap">
 												<TerminalIcon size={12} />
 												<span className="font-medium">{command.name}</span>
 												<Badge variant={command.disabled ? "secondary" : "success"}>
 													{command.disabled ? t("commands.disabled") : t("commands.enabled")}
 												</Badge>
+												{command.source === "user" ? (
+													<Badge variant="default">
+														{t("commands.sourceUser")}
+													</Badge>
+												) : (
+													<>
+														<Badge variant="outline">
+															{command.pluginName}
+														</Badge>
+														<Badge variant={command.pluginScope === "user" ? "default" : "secondary"}>
+															{command.pluginScope === "user" ? t("plugins.scopeUser") : t("plugins.scopeLocal")}
+														</Badge>
+													</>
+												)}
 												<span className="text-sm text-muted-foreground font-normal">
-													{`~/.claude/commands/${command.name}.md${command.disabled ? '.disabled' : ''}`}
+													{command.sourcePath}
 												</span>
 											</div>
 										</AccordionTrigger>
@@ -157,39 +205,15 @@ function CommandsPageContent() {
 											<div className="px-3 pt-3 space-y-3">
 												<div className="rounded-lg overflow-hidden border">
 													<CodeMirror
-														value={
-															commandEdits[command.name] !== undefined
-																? commandEdits[command.name]
-																: command.content
-														}
+														value={commandEdits[command.name] ?? command.content}
 														height="180px"
 														theme={codeMirrorTheme}
 														onChange={(value) =>
 															handleContentChange(command.name, value)
 														}
 														placeholder={t("commands.contentPlaceholder")}
-														extensions={[
-															yamlFrontmatter({
-																content: markdown({
-																	base: markdownLanguage,
-																}),
-															}),
-															EditorView.lineWrapping,
-														]}
-														basicSetup={{
-															lineNumbers: false,
-															highlightActiveLineGutter: true,
-															foldGutter: false,
-															dropCursor: false,
-															allowMultipleSelections: false,
-															indentOnInput: true,
-															bracketMatching: true,
-															closeBrackets: true,
-															autocompletion: true,
-															highlightActiveLine: true,
-															highlightSelectionMatches: true,
-															searchKeymap: false,
-														}}
+														extensions={markdownExtensions}
+														basicSetup={codeMirrorBasicSetup}
 													/>
 												</div>
 												<div className="flex justify-between bg-card">
@@ -203,7 +227,7 @@ function CommandsPageContent() {
 															}
 															size="sm"
 														>
-															<SaveIcon size={14} className="" />
+															<SaveIcon size={14} />
 															{writeCommand.isPending
 																? t("commands.saving")
 																: t("commands.save")}
@@ -225,7 +249,7 @@ function CommandsPageContent() {
 														onClick={() => handleDeleteCommand(command.name)}
 														disabled={deleteCommand.isPending}
 													>
-														<TrashIcon size={14} className="" />
+														<TrashIcon size={14} />
 													</Button>
 												</div>
 											</div>
@@ -257,7 +281,11 @@ export function CommandsPage() {
 	);
 }
 
-function CreateCommandPanel({ onClose }: { onClose?: () => void }) {
+type CreateCommandPanelProps = {
+	onClose?: () => void;
+};
+
+function CreateCommandPanel({ onClose }: CreateCommandPanelProps) {
 	const { t } = useTranslation();
 	const [commandName, setCommandName] = useState("");
 	const [commandContent, setCommandContent] = useState("");
@@ -266,7 +294,6 @@ function CreateCommandPanel({ onClose }: { onClose?: () => void }) {
 	const codeMirrorTheme = useCodeMirrorTheme();
 
 	const handleCreateCommand = async () => {
-		// Validate command name
 		if (!commandName.trim()) {
 			await message(t("commands.emptyNameError"), {
 				title: t("commands.validationError"),
@@ -275,9 +302,7 @@ function CreateCommandPanel({ onClose }: { onClose?: () => void }) {
 			return;
 		}
 
-		// Check if command already exists
-		const exists = commands && commands.some((cmd) => cmd.name === commandName);
-		if (exists) {
+		if (commands?.some((cmd) => cmd.name === commandName)) {
 			await message(t("commands.commandExistsError", { commandName }), {
 				title: t("commands.commandExistsTitle"),
 				kind: "info",
@@ -285,7 +310,6 @@ function CreateCommandPanel({ onClose }: { onClose?: () => void }) {
 			return;
 		}
 
-		// Validate content
 		if (!commandContent.trim()) {
 			await message(t("commands.emptyContentError"), {
 				title: t("commands.validationError"),
@@ -329,29 +353,9 @@ function CreateCommandPanel({ onClose }: { onClose?: () => void }) {
 						onChange={(value) => setCommandContent(value)}
 						height="200px"
 						theme={codeMirrorTheme}
-						placeholder={t("commands.contentPlaceholder")}
-						extensions={[
-							yamlFrontmatter({
-								content: markdown({
-									base: markdownLanguage,
-								}),
-							}),
-							EditorView.lineWrapping,
-						]}
-						basicSetup={{
-							lineNumbers: false,
-							highlightActiveLineGutter: true,
-							foldGutter: false,
-							dropCursor: false,
-							allowMultipleSelections: false,
-							indentOnInput: true,
-							bracketMatching: true,
-							closeBrackets: true,
-							autocompletion: true,
-							highlightActiveLine: true,
-							highlightSelectionMatches: true,
-							searchKeymap: false,
-						}}
+														placeholder={t("commands.contentPlaceholder")}
+														extensions={markdownExtensions}
+														basicSetup={codeMirrorBasicSetup}
 					/>
 				</div>
 			</div>

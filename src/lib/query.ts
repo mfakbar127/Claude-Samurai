@@ -55,6 +55,25 @@ export interface CommandFile {
 	disabled: boolean;
 }
 
+export interface PluginCommandFile {
+	name: string;
+	content: string;
+	exists: boolean;
+	disabled: boolean;
+	pluginName: string;
+	pluginScope: string;
+	sourcePath: string;
+}
+
+export interface PluginAgentFile {
+	name: string;
+	content: string;
+	exists: boolean;
+	pluginName: string;
+	pluginScope: string;
+	sourcePath: string;
+}
+
 export const useConfigFiles = () => {
 	return useQuery({
 		queryKey: ["config-files"],
@@ -400,32 +419,42 @@ export const useDeleteGlobalMcpServer = () => {
 export interface McpEnabledState {
 	enabledMcpjsonServers: string[];
 	disabledMcpjsonServers: string[];
+	disabledMcpServers: string[];
 }
 
-export const useGetMcpEnabledState = () => {
+export const useGetMcpEnabledState = (cwd?: string) => {
 	return useSuspenseQuery({
-		queryKey: ["mcp-enabled-state"],
-		queryFn: () => invoke<McpEnabledState>("get_mcp_enabled_state"),
+		queryKey: ["mcp-enabled-state", cwd],
+		queryFn: () => invoke<McpEnabledState>("get_mcp_enabled_state", { cwd }),
 	});
 };
 
-export const useToggleMcpServer = () => {
+export const useToggleMcpServer = (cwd?: string) => {
 	const queryClient = useQueryClient();
 
 	return useMutation({
 		mutationFn: ({
 			serverName,
 			enabled,
+			sourceType,
 		}: {
 			serverName: string;
 			enabled: boolean;
-		}) => invoke<void>("toggle_mcp_server_state", { serverName, enabled }),
+			sourceType: "mcpjson" | "direct" | "plugin";
+		}) => {
+			if (sourceType === "direct") {
+				return invoke<void>("toggle_direct_mcp_server", { serverName, enabled, cwd });
+			} else {
+				// Both "mcpjson" and "plugin" use the same toggle mechanism
+				return invoke<void>("toggle_mcp_server_state", { serverName, enabled, cwd });
+			}
+		},
 		onSuccess: (_, variables) => {
 			toast.success(
 				`MCP server ${variables.enabled ? "enabled" : "disabled"} successfully`,
 			);
-			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state"] });
-			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-enabled-state", cwd] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state", cwd] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -438,8 +467,8 @@ export const useToggleMcpServer = () => {
 export interface McpServerState {
 	name: string;
 	config: Record<string, any>;
-	sourceType: "mcpjson" | "direct";
-	scope: "user" | "project" | "local";
+	sourceType: "mcpjson" | "direct" | "plugin";
+	scope: "user" | "project" | "local" | "plugin-user" | "plugin-local";
 	definedIn: string;
 	controllable: boolean;
 	state: "disabled" | "enabled" | "runtime-disabled";
@@ -447,10 +476,10 @@ export interface McpServerState {
 	inDisabledArray: boolean;
 }
 
-export const useGetMcpServersWithState = () => {
+export const useGetMcpServersWithState = (cwd?: string) => {
 	return useSuspenseQuery({
-		queryKey: ["mcp-servers-with-state"],
-		queryFn: () => invoke<McpServerState[]>("get_mcp_servers_with_state"),
+		queryKey: ["mcp-servers-with-state", cwd],
+		queryFn: () => invoke<McpServerState[]>("get_mcp_servers_with_state", { cwd }),
 	});
 };
 
@@ -589,6 +618,12 @@ export const useClaudeCommands = () =>
 		queryFn: () => invoke<CommandFile[]>("read_claude_commands"),
 	});
 
+export const usePluginCommands = () =>
+	useQuery({
+		queryKey: ["plugin-commands"],
+		queryFn: () => invoke<PluginCommandFile[]>("read_plugin_commands"),
+	});
+
 export const useWriteClaudeCommand = () => {
 	const queryClient = useQueryClient();
 
@@ -603,6 +638,7 @@ export const useWriteClaudeCommand = () => {
 		onSuccess: () => {
 			toast.success(i18n.t("toast.commandSaved"));
 			queryClient.invalidateQueries({ queryKey: ["claude-commands"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -621,6 +657,7 @@ export const useDeleteClaudeCommand = () => {
 		onSuccess: () => {
 			toast.success(i18n.t("toast.commandDeleted"));
 			queryClient.invalidateQueries({ queryKey: ["claude-commands"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -644,6 +681,7 @@ export const useToggleClaudeCommand = () => {
 		onSuccess: () => {
 			toast.success(i18n.t("toast.commandToggled"));
 			queryClient.invalidateQueries({ queryKey: ["claude-commands"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -660,6 +698,12 @@ export const useClaudeAgents = () =>
 		queryFn: () => invoke<CommandFile[]>("read_claude_agents"),
 	});
 
+export const usePluginAgents = () =>
+	useQuery({
+		queryKey: ["plugin-agents"],
+		queryFn: () => invoke<PluginAgentFile[]>("read_plugin_agents"),
+	});
+
 export const useWriteClaudeAgent = () => {
 	const queryClient = useQueryClient();
 
@@ -674,6 +718,7 @@ export const useWriteClaudeAgent = () => {
 		onSuccess: () => {
 			toast.success("Agent saved successfully");
 			queryClient.invalidateQueries({ queryKey: ["claude-agents"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -692,6 +737,7 @@ export const useDeleteClaudeAgent = () => {
 		onSuccess: () => {
 			toast.success("Agent deleted successfully");
 			queryClient.invalidateQueries({ queryKey: ["claude-agents"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
 		},
 		onError: (error) => {
 			const errorMessage =
@@ -708,4 +754,64 @@ const rebuildTrayMenu = async () => {
 	} catch (error) {
 		console.error("Failed to rebuild tray menu:", error);
 	}
+};
+
+// Plugin management types and hooks
+
+export interface PluginPackages {
+	hasAgents: boolean;
+	hasSkills: boolean;
+	hasCommands: boolean;
+	hasMcp: boolean;
+}
+
+export interface PluginInfo {
+	name: string;
+	scope: "user" | "local";
+	version: string;
+	projectPath?: string;
+	enabled: boolean;
+	packages: PluginPackages;
+	installPath: string;
+	installedAt: string;
+}
+
+export const useInstalledPlugins = () =>
+	useQuery({
+		queryKey: ["installed-plugins"],
+		queryFn: () => invoke<PluginInfo[]>("read_installed_plugins"),
+	});
+
+export const useTogglePlugin = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			pluginName,
+			enabled,
+			scope,
+			projectPath,
+		}: {
+			pluginName: string;
+			enabled: boolean;
+			scope: string;
+			projectPath?: string;
+		}) =>
+			invoke<void>("toggle_plugin", {
+				pluginName,
+				enabled,
+				scope,
+				projectPath,
+			}),
+		onSuccess: () => {
+			toast.success("Plugin status updated successfully");
+			queryClient.invalidateQueries({ queryKey: ["installed-plugins"] });
+			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(`Failed to toggle plugin: ${errorMessage}`);
+		},
+	});
 };

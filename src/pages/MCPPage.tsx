@@ -3,7 +3,10 @@ import { ask, message } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import CodeMirror from "@uiw/react-codemirror";
 import {
+	Check,
+	ChevronsUpDown,
 	ExternalLinkIcon,
+	FolderIcon,
 	HammerIcon,
 	PlusIcon,
 	SaveIcon,
@@ -11,7 +14,6 @@ import {
 } from "lucide-react";
 import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { match } from "ts-pattern";
 import {
 	Accordion,
 	AccordionContent,
@@ -21,6 +23,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+	Command,
+	CommandEmpty,
+	CommandGroup,
+	CommandInput,
+	CommandItem,
+	CommandList,
+} from "@/components/ui/command";
+import {
 	Dialog,
 	DialogContent,
 	DialogDescription,
@@ -28,31 +38,40 @@ import {
 	DialogTitle,
 	DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "@/components/ui/popover";
 import { builtInMcpServers } from "@/lib/builtInMCP";
 import {
 	type McpServerState,
 	useAddGlobalMcpServer,
+	useClaudeProjects,
 	useDeleteGlobalMcpServer,
 	useGetMcpServersWithState,
 	useToggleMcpServer,
 	useUpdateGlobalMcpServer,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
+import { cn } from "@/lib/utils";
 
 function MCPPageContent() {
 	const { t } = useTranslation();
-	const { data: mcpServersWithState } = useGetMcpServersWithState();
+	const { data: projects } = useClaudeProjects();
+	const [currentCwd, setCurrentCwd] = useState<string | undefined>(undefined);
+	const { data: mcpServersWithState } = useGetMcpServersWithState(currentCwd);
 	const updateMcpServer = useUpdateGlobalMcpServer();
 	const deleteMcpServer = useDeleteGlobalMcpServer();
-	const toggleMcpServer = useToggleMcpServer();
+	const toggleMcpServer = useToggleMcpServer(currentCwd);
 	const [serverConfigs, setServerConfigs] = useState<Record<string, string>>(
 		{},
 	);
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
+	const [comboboxOpen, setComboboxOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
 
-	// Helper functions for badge display
-	const getBadgeVariant = (state: string) => {
+	function getBadgeVariant(state: string) {
 		switch (state) {
 			case "enabled":
 				return "success";
@@ -60,12 +79,12 @@ function MCPPageContent() {
 				return "outline";
 			case "runtime-disabled":
 				return "secondary";
-			default:
-				return "outline";
-		}
-	};
+		default:
+			return "outline";
+	}
+	}
 
-	const getBadgeLabel = (state: string) => {
+	function getBadgeLabel(state: string) {
 		switch (state) {
 			case "enabled":
 				return t("mcp.enabled");
@@ -73,18 +92,17 @@ function MCPPageContent() {
 				return t("mcp.disabled");
 			case "runtime-disabled":
 				return t("mcp.runtimeDisabled");
-			default:
-				return t("mcp.disabled");
-		}
-	};
+		default:
+			return t("mcp.disabled");
+	}
+	}
 
 	const handleToggleServer = async (server: McpServerState) => {
-		if (!server.controllable) return;
-		
 		const currentlyEnabled = server.state === "enabled" || server.state === "runtime-disabled";
 		toggleMcpServer.mutate({
 			serverName: server.name,
 			enabled: !currentlyEnabled,
+			sourceType: server.sourceType,
 		});
 	};
 
@@ -114,7 +132,6 @@ function MCPPageContent() {
 	};
 
 	const handleDeleteServer = async (serverName: string) => {
-		// Show confirmation dialog
 		const confirmed = await ask(t("mcp.deleteServerConfirm", { serverName }), {
 			title: t("mcp.deleteServerTitle"),
 			kind: "warning",
@@ -125,18 +142,23 @@ function MCPPageContent() {
 		}
 	};
 
-	const formatConfigForDisplay = (server: McpServerState): string => {
+	function formatConfigForDisplay(server: McpServerState): string {
 		return JSON.stringify(server.config, null, 2);
-	};
+	}
+
+	function getPluginNameFromDefinedIn(definedIn: string): string {
+		const match = definedIn.match(/Plugin: (.+?) \(/);
+		return match ? match[1] : "Plugin";
+	}
 
 	const sortedServers = [...mcpServersWithState].sort((a, b) =>
 		a.name.localeCompare(b.name),
 	);
 
 	return (
-		<div className="">
+		<div>
 			<div
-				className="flex items-center p-3 border-b px-3 justify-between sticky top-0 bg-background z-10"
+				className="flex items-center justify-between sticky top-0 z-10 border-b p-3 bg-background"
 				data-tauri-drag-region
 			>
 				<div data-tauri-drag-region>
@@ -166,24 +188,97 @@ function MCPPageContent() {
 						<div className="py-3 mt-3">
 							<MCPCreatePanel onClose={() => setIsDialogOpen(false)} />
 						</div>
-						{/* <div className="flex justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setIsDialogOpen(false)}
-              >
-                关闭
-              </Button>
-            </div> */}
 					</DialogContent>
 				</Dialog>
 			</div>
-			<div className="">
+			{projects && projects.length > 0 && (
+				<div className="p-3 border-b bg-muted/30">
+					<div className="flex items-center gap-2">
+						<span className="text-sm text-muted-foreground">
+							{t("mcp.projectScope")}:
+						</span>
+						<Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+							<PopoverTrigger asChild>
+								<Button
+									variant="secondary"
+									size="sm"
+									role="combobox"
+									aria-expanded={comboboxOpen}
+									className="justify-between min-w-[250px]"
+								>
+									<div className="flex items-center gap-2 truncate">
+										{currentCwd ? (
+											<>
+												<FolderIcon className="h-4 w-4 shrink-0" />
+												<span className="truncate">{currentCwd}</span>
+											</>
+										) : (
+											<span>{t("mcp.globalScope")}</span>
+										)}
+									</div>
+									<ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+								</Button>
+							</PopoverTrigger>
+							<PopoverContent className="w-[400px] p-0">
+								<Command>
+									<CommandInput
+										placeholder={t("mcp.searchProject")}
+										className="h-9"
+									/>
+									<CommandList>
+										<CommandEmpty>{t("mcp.noProjectFound")}</CommandEmpty>
+										<CommandGroup>
+											<CommandItem
+												value="global"
+												onSelect={() => {
+													setCurrentCwd(undefined);
+													setComboboxOpen(false);
+												}}
+											>
+												<span className="truncate">{t("mcp.globalScope")}</span>
+												<Check
+													className={cn(
+														"ml-auto h-4 w-4",
+														!currentCwd ? "opacity-100" : "opacity-0",
+													)}
+												/>
+											</CommandItem>
+											{projects.map((project) => (
+												<CommandItem
+													key={project.path}
+													value={project.path}
+													onSelect={() => {
+														setCurrentCwd(project.path);
+														setComboboxOpen(false);
+													}}
+												>
+													<FolderIcon className="mr-2 h-4 w-4" />
+													<span className="truncate">{project.path}</span>
+													<Check
+														className={cn(
+															"ml-auto h-4 w-4",
+															currentCwd === project.path
+																? "opacity-100"
+																: "opacity-0",
+														)}
+													/>
+												</CommandItem>
+											))}
+										</CommandGroup>
+									</CommandList>
+								</Command>
+							</PopoverContent>
+						</Popover>
+					</div>
+				</div>
+			)}
+			<div>
 				{sortedServers.length === 0 ? (
 					<div className="text-center text-muted-foreground py-8">
 						{t("mcp.noServersConfigured")}
 					</div>
 				) : (
-					<Accordion type="multiple" className="">
+					<Accordion type="multiple">
 						{sortedServers.map((server) => (
 							<AccordionItem
 								key={server.name}
@@ -191,15 +286,26 @@ function MCPPageContent() {
 								className="bg-card"
 							>
 								<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent  duration-150">
-									<div className="flex items-center gap-2">
+									<div className="flex items-center gap-2 flex-wrap">
 										<HammerIcon size={12} />
 										<span className="font-medium">{server.name}</span>
 										<Badge variant={getBadgeVariant(server.state)}>
 											{getBadgeLabel(server.state)}
 										</Badge>
-										<Badge variant="outline" className="text-xs">
-											{server.sourceType}
-										</Badge>
+										{server.sourceType === "plugin" ? (
+											<>
+												<Badge variant="outline" className="text-xs">
+													{getPluginNameFromDefinedIn(server.definedIn)}
+												</Badge>
+												<Badge variant={server.scope === "plugin-user" ? "default" : "secondary"} className="text-xs">
+													{server.scope === "plugin-user" ? t("plugins.scopeUser") : t("plugins.scopeLocal")}
+												</Badge>
+											</>
+										) : (
+											<Badge variant="outline" className="text-xs">
+												{server.sourceType}
+											</Badge>
+										)}
 									</div>
 								</AccordionTrigger>
 								<AccordionContent className="pb-3">
@@ -219,7 +325,7 @@ function MCPPageContent() {
 												placeholder="Enter MCP server configuration as JSON"
 											/>
 										</div>
-										<div className="flex justify-between  bg-card">
+										<div className="flex justify-between bg-card">
 											<div className="flex gap-2">
 												<Button
 													variant="outline"
@@ -227,7 +333,7 @@ function MCPPageContent() {
 													disabled={updateMcpServer.isPending}
 													size="sm"
 												>
-													<SaveIcon size={14} className="" />
+													<SaveIcon size={14} />
 													{updateMcpServer.isPending
 														? t("mcp.saving")
 														: t("mcp.save")}
@@ -239,7 +345,7 @@ function MCPPageContent() {
 													onClick={() => handleDeleteServer(server.name)}
 													disabled={deleteMcpServer.isPending}
 												>
-													<TrashIcon size={14} className="" />
+													<TrashIcon size={14} />
 												</Button>
 											</div>
 
@@ -249,12 +355,7 @@ function MCPPageContent() {
 												}
 												size="sm"
 												onClick={() => handleToggleServer(server)}
-												disabled={!server.controllable || toggleMcpServer.isPending}
-												title={
-													!server.controllable
-														? t("mcp.notControllable")
-														: undefined
-												}
+												disabled={toggleMcpServer.isPending}
 											>
 												{server.state === "enabled"
 													? t("mcp.disable")
@@ -273,11 +374,13 @@ function MCPPageContent() {
 }
 
 export function MCPPage() {
+	const { t } = useTranslation();
+
 	return (
 		<Suspense
 			fallback={
 				<div className="flex items-center justify-center min-h-screen">
-					<div className="text-center">Loading MCP servers...</div>
+					<div className="text-center">{t("loading")}</div>
 				</div>
 			}
 		>
@@ -286,14 +389,18 @@ export function MCPPage() {
 	);
 }
 
-function MCPCreatePanel({ onClose }: { onClose?: () => void }) {
+type MCPCreatePanelProps = {
+	onClose?: () => void;
+};
+
+function MCPCreatePanel({ onClose }: MCPCreatePanelProps) {
 	const { t } = useTranslation();
 	const [currentTab, setCurrentTab] = useState<"recommend" | "manual">(
 		"recommend",
 	);
 
 	return (
-		<div className="">
+		<div>
 			<div className="flex mb-3 gap-1">
 				<Button
 					size="sm"
@@ -313,19 +420,20 @@ function MCPCreatePanel({ onClose }: { onClose?: () => void }) {
 				</Button>
 			</div>
 
-			{match(currentTab)
-				.with("recommend", () => {
-					return <RecommendMCPPanel onClose={onClose} />;
-				})
-				.with("manual", () => {
-					return <CustomMCPPanel onClose={onClose} />;
-				})
-				.exhaustive()}
+			{currentTab === "recommend" ? (
+				<RecommendMCPPanel onClose={onClose} />
+			) : (
+				<CustomMCPPanel onClose={onClose} />
+			)}
 		</div>
 	);
 }
 
-function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
+type RecommendMCPPanelProps = {
+	onClose?: () => void;
+};
+
+function RecommendMCPPanel({ onClose }: RecommendMCPPanelProps) {
 	const { t } = useTranslation();
 	const addMcpServer = useAddGlobalMcpServer();
 	const { data: mcpServersWithState } = useGetMcpServersWithState();
@@ -334,9 +442,8 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 		mcpServer: (typeof builtInMcpServers)[0],
 	) => {
 		try {
-			// Check if MCP server already exists using cached data
 			const exists =
-				mcpServersWithState && mcpServersWithState.some(s => s.name === mcpServer.name);
+				mcpServersWithState?.some((s) => s.name === mcpServer.name);
 
 			if (exists) {
 				await message(
@@ -349,14 +456,12 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 				return;
 			}
 
-			// Show confirmation dialog
 			const confirmed = await ask(
 				t("mcp.addServerConfirm", { serverName: mcpServer.name }),
 				{ title: t("mcp.addServerTitle"), kind: "info" },
 			);
 
 			if (confirmed) {
-				// Parse the prefill JSON to get the config object
 				const configObject = JSON.parse(`{${mcpServer.prefill}}`);
 
 				addMcpServer.mutate(
@@ -366,7 +471,6 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 					},
 					{
 						onSuccess: () => {
-							// Close dialog after successful addition
 							onClose?.();
 						},
 					},
@@ -375,7 +479,7 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 		} catch (error) {
 			console.error("Failed to add MCP server:", error);
 			await message(t("mcp.addServerError"), {
-				title: "Error",
+				title: t("error.title"),
 				kind: "error",
 			});
 		}
@@ -402,15 +506,10 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 							{t("mcp.source")}
 						</a>
 					</div>
-					<div></div>
 					<div className="space-y-3">
 						<p className="text-sm text-muted-foreground">
 							{mcpServer.description}
 						</p>
-						{/* <Button size="sm" variant="outline" className="w-full text-sm">
-          <PlusIcon />
-          添加
-        </Button> */}
 					</div>
 				</div>
 			))}
@@ -418,7 +517,11 @@ function RecommendMCPPanel({ onClose }: { onClose?: () => void }) {
 	);
 }
 
-function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
+type CustomMCPPanelProps = {
+	onClose?: () => void;
+};
+
+function CustomMCPPanel({ onClose }: CustomMCPPanelProps) {
 	const { t } = useTranslation();
 	const [customConfig, setCustomConfig] = useState("");
 	const addMcpServer = useAddGlobalMcpServer();
@@ -427,11 +530,10 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 
 	const handleAddCustomMcpServer = async () => {
 		try {
-			// Validate JSON format
 			let configObject;
 			try {
 				configObject = JSON.parse(customConfig);
-			} catch (error) {
+			} catch {
 				await message(t("mcp.addCustomServerError"), {
 					title: t("mcp.invalidJsonTitle"),
 					kind: "error",
@@ -439,10 +541,9 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 				return;
 			}
 
-			// Check if it's an object with at least one server
 			if (typeof configObject !== "object" || configObject === null) {
 				await message(t("mcp.invalidConfigError"), {
-					title: "Invalid Configuration",
+					title: t("mcp.invalidJsonTitle"),
 					kind: "error",
 				});
 				return;
@@ -451,14 +552,13 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 			const serverNames = Object.keys(configObject);
 			if (serverNames.length === 0) {
 				await message(t("mcp.noServersError"), {
-					title: "Invalid Configuration",
+					title: t("mcp.invalidJsonTitle"),
 					kind: "error",
 				});
 				return;
 			}
 
-			// Check for duplicate server names
-			const existingNames = mcpServersWithState ? mcpServersWithState.map(s => s.name) : [];
+			const existingNames = mcpServersWithState?.map((s) => s.name) ?? [];
 			const duplicateNames = serverNames.filter((name) =>
 				existingNames.includes(name),
 			);
@@ -476,14 +576,12 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 				return;
 			}
 
-			// Show confirmation dialog
 			const confirmed = await ask(
 				t("mcp.addCustomServersConfirm", { count: serverNames.length }),
 				{ title: t("mcp.addCustomServersTitle"), kind: "info" },
 			);
 
 			if (confirmed) {
-				// Add each server
 				for (const [serverName, serverConfig] of Object.entries(configObject)) {
 					addMcpServer.mutate({
 						serverName,
@@ -491,21 +589,20 @@ function CustomMCPPanel({ onClose }: { onClose?: () => void }) {
 					});
 				}
 
-				// Clear input and close dialog
 				setCustomConfig("");
 				onClose?.();
 			}
 		} catch (error) {
 			console.error("Failed to add custom MCP servers:", error);
 			await message(t("mcp.addServerError"), {
-				title: "Error",
+				title: t("error.title"),
 				kind: "error",
 			});
 		}
 	};
 
 	return (
-		<div className="">
+		<div>
 			<div className="space-y-3">
 				<div className="rounded-lg overflow-hidden border">
 					<CodeMirror
