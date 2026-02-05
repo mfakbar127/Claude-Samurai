@@ -2332,6 +2332,7 @@ pub struct SkillFile {
     pub plugin_name: Option<String>,
     #[serde(rename = "projectPath", skip_serializing_if = "Option::is_none")]
     pub project_path: Option<String>,
+    pub disabled: bool,
 }
 
 fn collect_user_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, String> {
@@ -2359,12 +2360,17 @@ fn collect_user_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, Str
             .unwrap_or("")
             .to_string();
         let skill_md = path.join("SKILL.md");
+        let skill_md_disabled = path.join("SKILL.md.disabled");
 
-        if !skill_md.is_file() {
+        let (content_path, disabled) = if skill_md.is_file() {
+            (skill_md, false)
+        } else if skill_md_disabled.is_file() {
+            (skill_md_disabled, true)
+        } else {
             continue;
-        }
+        };
 
-        let content = std::fs::read_to_string(&skill_md)
+        let content = std::fs::read_to_string(&content_path)
             .map_err(|e| format!("Failed to read SKILL.md for {}: {}", skill_name, e))?;
         skills.push(SkillFile {
             name: skill_name,
@@ -2373,6 +2379,7 @@ fn collect_user_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, Str
             source: "global".to_string(),
             plugin_name: None,
             project_path: None,
+            disabled,
         });
     }
 
@@ -2466,6 +2473,7 @@ fn collect_plugin_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, S
                     source: "plugin".to_string(),
                     plugin_name: Some(plugin_name.clone()),
                     project_path: install.project_path.clone(),
+                    disabled: false,
                 });
             }
         }
@@ -2530,12 +2538,17 @@ fn collect_project_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, 
                 .unwrap_or("")
                 .to_string();
             let skill_md = path.join("SKILL.md");
+            let skill_md_disabled = path.join("SKILL.md.disabled");
 
-            if !skill_md.is_file() {
+            let (content_path, disabled) = if skill_md.is_file() {
+                (skill_md, false)
+            } else if skill_md_disabled.is_file() {
+                (skill_md_disabled, true)
+            } else {
                 continue;
-            }
+            };
 
-            let content = std::fs::read_to_string(&skill_md).map_err(|e| {
+            let content = std::fs::read_to_string(&content_path).map_err(|e| {
                 format!(
                     "Failed to read SKILL.md for project skill {} (project {}): {}",
                     skill_name, project_path, e
@@ -2549,6 +2562,7 @@ fn collect_project_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, 
                 source: "project".to_string(),
                 plugin_name: None,
                 project_path: Some(project_path.clone()),
+                disabled,
             });
         }
     }
@@ -2567,6 +2581,61 @@ pub async fn list_claude_skills() -> Result<Vec<SkillFile>, String> {
 
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(skills)
+}
+
+#[tauri::command]
+pub async fn toggle_claude_skill(
+    name: String,
+    source: String,
+    project_path: Option<String>,
+    disabled: bool,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    let base_dir = if source == "global" {
+        home_dir.join(".claude/skills")
+    } else if source == "project" {
+        let project = project_path
+            .ok_or_else(|| "Project path is required for project skills".to_string())?;
+        std::path::PathBuf::from(project).join(".claude/skills")
+    } else {
+        return Err("Cannot toggle plugin skills from this interface".to_string());
+    };
+
+    let skill_dir = base_dir.join(&name);
+
+    if !skill_dir.exists() || !skill_dir.is_dir() {
+        return Err(format!(
+            "Skill directory {} does not exist",
+            skill_dir.display()
+        ));
+    }
+
+    let (source_path, target_path) = if disabled {
+        // Disable: rename SKILL.md to SKILL.md.disabled
+        (
+            skill_dir.join("SKILL.md"),
+            skill_dir.join("SKILL.md.disabled"),
+        )
+    } else {
+        // Enable: rename SKILL.md.disabled to SKILL.md
+        (
+            skill_dir.join("SKILL.md.disabled"),
+            skill_dir.join("SKILL.md"),
+        )
+    };
+
+    if !source_path.exists() {
+        return Err(format!(
+            "Skill file {} does not exist",
+            source_path.display()
+        ));
+    }
+
+    std::fs::rename(&source_path, &target_path)
+        .map_err(|e| format!("Failed to toggle skill file: {}", e))?;
+
+    Ok(())
 }
 
 #[tauri::command]

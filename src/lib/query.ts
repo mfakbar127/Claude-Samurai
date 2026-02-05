@@ -782,11 +782,15 @@ export const useInstalledPlugins = () =>
 		queryFn: () => invoke<PluginInfo[]>("read_installed_plugins"),
 	});
 
-// Skills (Claude skills in ~/.claude/skills)
+// Skills (Claude skills from global, plugins, and projects)
 export interface SkillFile {
 	name: string;
 	content: string;
 	exists: boolean;
+	source: "global" | "plugin" | "project";
+	pluginName?: string;
+	projectPath?: string;
+	disabled: boolean;
 }
 
 export const useClaudeSkills = () =>
@@ -794,6 +798,33 @@ export const useClaudeSkills = () =>
 		queryKey: ["claude-skills"],
 		queryFn: () => invoke<SkillFile[]>("list_claude_skills"),
 	});
+
+export const useToggleClaudeSkill = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			name,
+			source,
+			projectPath,
+			disabled,
+		}: {
+			name: string;
+			source: "global" | "plugin" | "project";
+			projectPath?: string;
+			disabled: boolean;
+		}) =>
+			invoke<void>("toggle_claude_skill", {
+				name,
+				source,
+				projectPath,
+				disabled,
+			}),
+		onSuccess: () => {
+			queryClient.invalidateQueries({ queryKey: ["claude-skills"] });
+		},
+	});
+};
 
 export const useTogglePlugin = () => {
 	const queryClient = useQueryClient();

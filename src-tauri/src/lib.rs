@@ -216,7 +216,8 @@ pub fn run() {
             toggle_plugin,
             read_plugin_commands,
             read_plugin_agents,
-            list_claude_skills
+            list_claude_skills,
+            toggle_claude_skill
         ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]

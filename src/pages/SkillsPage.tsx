@@ -8,14 +8,17 @@ import {
 	AccordionItem,
 	AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { codeMirrorBasicSetup, markdownExtensions } from "@/lib/codemirror-config";
-import { useClaudeSkills } from "@/lib/query";
+import { useClaudeSkills, useToggleClaudeSkill } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 
 function SkillsPageContent() {
 	const { t } = useTranslation();
 	const { data: skills, isLoading, error } = useClaudeSkills();
+	const toggleSkill = useToggleClaudeSkill();
 	const codeMirrorTheme = useCodeMirrorTheme();
 
 	if (isLoading) {
@@ -36,7 +39,22 @@ function SkillsPageContent() {
 		);
 	}
 
-	const skillList = skills ?? [];
+	const sourceOrder: Record<"global" | "plugin" | "project", number> = {
+		global: 0,
+		plugin: 1,
+		project: 2,
+	};
+
+	const skillList = (skills ?? []).slice().sort((a, b) => {
+		const orderA = sourceOrder[a.source] ?? 99;
+		const orderB = sourceOrder[b.source] ?? 99;
+
+		if (orderA !== orderB) {
+			return orderA - orderB;
+		}
+
+		return a.name.localeCompare(b.name);
+	});
 
 	return (
 		<div>
@@ -69,13 +87,61 @@ function SkillsPageContent() {
 										className="bg-card"
 									>
 										<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
-											<div className="flex items-center gap-2 flex-wrap">
-												<SparklesIcon size={12} />
-												<span className="font-medium">{skill.name}</span>
+											<div className="flex items-center justify-between gap-2 w-full">
+												<div className="flex items-center gap-2 flex-wrap">
+													<SparklesIcon size={12} />
+													<span className="font-medium">{skill.name}</span>
+													<Badge
+														variant={skill.disabled ? "destructive" : "success"}
+													>
+														{skill.disabled ? "Disabled" : "Enabled"}
+													</Badge>
+													{skill.source === "project" && skill.projectPath && (
+														<span className="text-xs text-muted-foreground font-mono truncate max-w-xs">
+															{skill.projectPath}
+														</span>
+													)}
+												</div>
+												<div className="flex items-center gap-2">
+													{skill.source === "global" && (
+														<Badge variant="secondary">Global</Badge>
+													)}
+													{skill.source === "project" && (
+														<Badge variant="secondary">Project</Badge>
+													)}
+													{skill.source === "plugin" && skill.pluginName && (
+														<Badge variant="secondary">
+															Plugins ({skill.pluginName})
+														</Badge>
+													)}
+												</div>
 											</div>
 										</AccordionTrigger>
 										<AccordionContent className="pb-3">
 											<div className="px-3 pt-3 space-y-3">
+												<div className="flex items-center justify-end">
+													<Button
+														variant="outline"
+														size="xs"
+														disabled={
+															skill.source === "plugin" || toggleSkill.isPending
+														}
+														onClick={() => {
+															if (skill.source === "plugin") {
+																return;
+															}
+
+															toggleSkill.mutate({
+																name: skill.name,
+																source: skill.source,
+																projectPath: skill.projectPath,
+																disabled: !skill.disabled,
+															});
+														}}
+													>
+														{skill.disabled ? "Enable" : "Disable"}
+													</Button>
+												</div>
 												<div className="rounded-lg overflow-hidden border">
 													<CodeMirror
 														value={skill.content}
