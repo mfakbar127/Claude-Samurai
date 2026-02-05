@@ -782,6 +782,19 @@ export const useInstalledPlugins = () =>
 		queryFn: () => invoke<PluginInfo[]>("read_installed_plugins"),
 	});
 
+// Skills (Claude skills in ~/.claude/skills)
+export interface SkillFile {
+	name: string;
+	content: string;
+	exists: boolean;
+}
+
+export const useClaudeSkills = () =>
+	useQuery({
+		queryKey: ["claude-skills"],
+		queryFn: () => invoke<SkillFile[]>("list_claude_skills"),
+	});
+
 export const useTogglePlugin = () => {
 	const queryClient = useQueryClient();
 

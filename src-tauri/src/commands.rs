@@ -2321,6 +2321,58 @@ pub async fn read_claude_commands() -> Result<Vec<CommandFile>, String> {
     Ok(command_files)
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct SkillFile {
+    pub name: String,
+    pub content: String,
+    pub exists: bool,
+}
+
+#[tauri::command]
+pub async fn list_claude_skills() -> Result<Vec<SkillFile>, String> {
+    let home_dir = home_dir()?;
+    let skills_dir = home_dir.join(".claude/skills");
+
+    if !skills_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let mut skills = Vec::new();
+    let entries = std::fs::read_dir(&skills_dir)
+        .map_err(|e| format!("Failed to read skills directory: {}", e))?;
+
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let path = entry.path();
+
+        if !path.is_dir() {
+            continue;
+        }
+
+        let skill_name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("")
+            .to_string();
+        let skill_md = path.join("SKILL.md");
+
+        if !skill_md.is_file() {
+            continue;
+        }
+
+        let content = std::fs::read_to_string(&skill_md)
+            .map_err(|e| format!("Failed to read SKILL.md for {}: {}", skill_name, e))?;
+        skills.push(SkillFile {
+            name: skill_name,
+            content,
+            exists: true,
+        });
+    }
+
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
 #[tauri::command]
 pub async fn write_claude_command(command_name: String, content: String) -> Result<(), String> {
     let home_dir = home_dir()?;

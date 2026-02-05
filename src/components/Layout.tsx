@@ -8,6 +8,7 @@ import {
 	FolderIcon,
 	PackageIcon,
 	SettingsIcon,
+	SparklesIcon,
 	TerminalIcon,
 } from "lucide-react";
 import type React from "react";
@@ -52,6 +53,11 @@ export function Layout() {
 			to: "/commands",
 			icon: TerminalIcon,
 			label: t("navigation.commands"),
+		},
+		{
+			to: "/skills",
+			icon: SparklesIcon,
+			label: t("navigation.skills"),
 		},
 		{
 			to: "/plugins",
