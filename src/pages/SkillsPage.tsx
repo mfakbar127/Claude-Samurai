@@ -1,6 +1,7 @@
+import { ask } from "@tauri-apps/plugin-dialog";
 import CodeMirror from "@uiw/react-codemirror";
-import { SparklesIcon } from "lucide-react";
-import { Suspense } from "react";
+import { SaveIcon, SparklesIcon, TrashIcon } from "lucide-react";
+import { Suspense, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	Accordion,
@@ -12,13 +13,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { codeMirrorBasicSetup, markdownExtensions } from "@/lib/codemirror-config";
-import { useClaudeSkills, useToggleClaudeSkill } from "@/lib/query";
+import {
+	type SkillFile,
+	useClaudeSkills,
+	useDeleteClaudeSkill,
+	useToggleClaudeSkill,
+	useWriteClaudeSkill,
+} from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
 
 function SkillsPageContent() {
 	const { t } = useTranslation();
 	const { data: skills, isLoading, error } = useClaudeSkills();
 	const toggleSkill = useToggleClaudeSkill();
+	const writeSkill = useWriteClaudeSkill();
+	const deleteSkill = useDeleteClaudeSkill();
+	const [skillEdits, setSkillEdits] = useState<Record<string, string>>({});
 	const codeMirrorTheme = useCodeMirrorTheme();
 
 	if (isLoading) {
@@ -55,6 +65,56 @@ function SkillsPageContent() {
 
 		return a.name.localeCompare(b.name);
 	});
+
+	const handleSaveSkill = (skill: SkillFile) => {
+		if (skill.source === "plugin") {
+			return;
+		}
+
+		const content = skillEdits[skill.name] ?? skill.content;
+
+		writeSkill.mutate({
+			name: skill.name,
+			source: skill.source,
+			projectPath: skill.projectPath,
+			content,
+			disabled: skill.disabled,
+		});
+	};
+
+	const handleToggleSkill = (skill: SkillFile) => {
+		if (skill.source === "plugin") {
+			return;
+		}
+
+		toggleSkill.mutate({
+			name: skill.name,
+			source: skill.source,
+			projectPath: skill.projectPath,
+			disabled: !skill.disabled,
+		});
+	};
+
+	const handleDeleteSkill = async (skill: SkillFile) => {
+		if (skill.source === "plugin") {
+			return;
+		}
+
+		const confirmed = await ask(`Delete skill ${skill.name}?`, {
+			title: "Delete skill",
+			kind: "warning",
+		});
+
+		if (!confirmed) {
+			return;
+		}
+
+		deleteSkill.mutate({
+			name: skill.name,
+			source: skill.source,
+			projectPath: skill.projectPath,
+		});
+	};
 
 	return (
 		<div>
@@ -119,39 +179,74 @@ function SkillsPageContent() {
 										</AccordionTrigger>
 										<AccordionContent className="pb-3">
 											<div className="px-3 pt-3 space-y-3">
-												<div className="flex items-center justify-end">
-													<Button
-														variant="outline"
-														size="xs"
-														disabled={
-															skill.source === "plugin" || toggleSkill.isPending
-														}
-														onClick={() => {
-															if (skill.source === "plugin") {
-																return;
-															}
-
-															toggleSkill.mutate({
-																name: skill.name,
-																source: skill.source,
-																projectPath: skill.projectPath,
-																disabled: !skill.disabled,
-															});
-														}}
-													>
-														{skill.disabled ? "Enable" : "Disable"}
-													</Button>
-												</div>
 												<div className="rounded-lg overflow-hidden border">
 													<CodeMirror
-														value={skill.content}
+														value={skillEdits[skill.name] ?? skill.content}
 														height="280px"
 														theme={codeMirrorTheme}
+														onChange={(value) =>
+															setSkillEdits((prev) => ({
+																...prev,
+																[skill.name]: value,
+															}))
+														}
 														placeholder={t("skills.contentPlaceholder")}
 														extensions={markdownExtensions}
 														basicSetup={codeMirrorBasicSetup}
-														editable={false}
 													/>
+												</div>
+												<div className="flex justify-between bg-card px-1 py-1">
+													<div className="flex items-center text-xs text-muted-foreground font-mono">
+														{skill.source === "global" && (
+															<span>{`~/.claude/skills/${skill.name}/SKILL${
+																skill.disabled ? ".md.disabled" : ".md"
+															}`}</span>
+														)}
+														{skill.source === "project" && skill.projectPath && (
+															<span>{`${skill.projectPath}/.claude/skills/${skill.name}/SKILL${
+																skill.disabled ? ".md.disabled" : ".md"
+															}`}</span>
+														)}
+														{skill.source === "plugin" && skill.pluginName && (
+															<span>{`Plugin: ${skill.pluginName}`}</span>
+														)}
+													</div>
+													<div className="flex gap-2">
+														<Button
+														variant="outline"
+														size="sm"
+															disabled={
+																skill.source === "plugin" || writeSkill.isPending
+															}
+															onClick={() => handleSaveSkill(skill)}
+														>
+															<SaveIcon size={12} className="mr-1" />
+															Save
+														</Button>
+														<Button
+														variant="outline"
+														size="sm"
+															disabled={
+																skill.source === "plugin" || toggleSkill.isPending
+															}
+															onClick={() => handleToggleSkill(skill)}
+														>
+															{skill.disabled ? "Enable" : "Disable"}
+														</Button>
+														<Button
+														variant="outline"
+														size="sm"
+															disabled={
+																skill.source === "plugin" || deleteSkill.isPending
+															}
+															onClick={() => {
+																void handleDeleteSkill(skill);
+															}}
+														>
+															<TrashIcon size={12} className="mr-1" />
+															Delete
+														</Button>
+													</div>
 												</div>
 											</div>
 										</AccordionContent>

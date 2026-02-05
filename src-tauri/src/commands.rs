@@ -2335,6 +2335,22 @@ pub struct SkillFile {
     pub disabled: bool,
 }
 
+fn skill_base_dir_for_source(
+    home_dir: &std::path::Path,
+    source: &str,
+    project_path: Option<&String>,
+) -> Result<std::path::PathBuf, String> {
+    if source == "global" {
+        Ok(home_dir.join(".claude/skills"))
+    } else if source == "project" {
+        let project = project_path
+            .ok_or_else(|| "Project path is required for project skills".to_string())?;
+        Ok(std::path::PathBuf::from(project).join(".claude/skills"))
+    } else {
+        Err("Unsupported skill source".to_string())
+    }
+}
+
 fn collect_user_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, String> {
     let skills_dir = home_dir.join(".claude/skills");
 
@@ -2592,15 +2608,12 @@ pub async fn toggle_claude_skill(
 ) -> Result<(), String> {
     let home_dir = home_dir()?;
 
-    let base_dir = if source == "global" {
-        home_dir.join(".claude/skills")
-    } else if source == "project" {
-        let project = project_path
-            .ok_or_else(|| "Project path is required for project skills".to_string())?;
-        std::path::PathBuf::from(project).join(".claude/skills")
-    } else {
+    if source == "plugin" {
         return Err("Cannot toggle plugin skills from this interface".to_string());
-    };
+    }
+
+    let base_dir =
+        skill_base_dir_for_source(&home_dir, &source, project_path.as_ref())?;
 
     let skill_dir = base_dir.join(&name);
 
@@ -2634,6 +2647,95 @@ pub async fn toggle_claude_skill(
 
     std::fs::rename(&source_path, &target_path)
         .map_err(|e| format!("Failed to toggle skill file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn write_claude_skill(
+    name: String,
+    source: String,
+    project_path: Option<String>,
+    content: String,
+    disabled: bool,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    if source == "plugin" {
+        return Err("Cannot write plugin skills from this interface".to_string());
+    }
+
+    let base_dir =
+        skill_base_dir_for_source(&home_dir, &source, project_path.as_ref())?;
+
+    // Ensure base .claude/skills directory exists
+    ensure_dir(&base_dir, "skills directory")?;
+
+    let skill_dir = base_dir.join(&name);
+    ensure_dir(&skill_dir, "skill directory")?;
+
+    let active_path = skill_dir.join("SKILL.md");
+    let disabled_path = skill_dir.join("SKILL.md.disabled");
+
+    if disabled {
+        // Write to SKILL.md.disabled and remove SKILL.md if it exists
+        std::fs::write(&disabled_path, content.clone())
+            .map_err(|e| format!("Failed to write disabled skill file: {}", e))?;
+        if active_path.exists() {
+            std::fs::remove_file(&active_path)
+                .map_err(|e| format!("Failed to remove active skill file: {}", e))?;
+        }
+    } else {
+        // Write to SKILL.md and remove SKILL.md.disabled if it exists
+        std::fs::write(&active_path, content.clone())
+            .map_err(|e| format!("Failed to write skill file: {}", e))?;
+        if disabled_path.exists() {
+            std::fs::remove_file(&disabled_path)
+                .map_err(|e| format!("Failed to remove disabled skill file: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_claude_skill(
+    name: String,
+    source: String,
+    project_path: Option<String>,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    if source == "plugin" {
+        return Err("Cannot delete plugin skills from this interface".to_string());
+    }
+
+    let base_dir =
+        skill_base_dir_for_source(&home_dir, &source, project_path.as_ref())?;
+
+    let skill_dir = base_dir.join(&name);
+
+    if !skill_dir.exists() || !skill_dir.is_dir() {
+        return Ok(());
+    }
+
+    let active_path = skill_dir.join("SKILL.md");
+    let disabled_path = skill_dir.join("SKILL.md.disabled");
+
+    if active_path.exists() {
+        std::fs::remove_file(&active_path)
+            .map_err(|e| format!("Failed to delete skill file: {}", e))?;
+    }
+
+    if disabled_path.exists() {
+        std::fs::remove_file(&disabled_path)
+            .map_err(|e| format!("Failed to delete disabled skill file: {}", e))?;
+    }
+
+    // Attempt to remove skill directory if empty
+    if skill_dir.read_dir().map_err(|e| format!("Failed to read skill directory: {}", e))?.next().is_none() {
+        let _ = std::fs::remove_dir(&skill_dir);
+    }
 
     Ok(())
 }

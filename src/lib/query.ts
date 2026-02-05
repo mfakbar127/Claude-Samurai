@@ -826,6 +826,72 @@ export const useToggleClaudeSkill = () => {
 	});
 };
 
+export const useWriteClaudeSkill = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			name,
+			source,
+			projectPath,
+			content,
+			disabled,
+		}: {
+			name: string;
+			source: "global" | "plugin" | "project";
+			projectPath?: string;
+			content: string;
+			disabled: boolean;
+		}) =>
+			invoke<void>("write_claude_skill", {
+				name,
+				source,
+				projectPath,
+				content,
+				disabled,
+			}),
+		onSuccess: () => {
+			toast.success("Skill saved successfully");
+			queryClient.invalidateQueries({ queryKey: ["claude-skills"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(`Failed to save skill: ${errorMessage}`);
+		},
+	});
+};
+
+export const useDeleteClaudeSkill = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			name,
+			source,
+			projectPath,
+		}: {
+			name: string;
+			source: "global" | "plugin" | "project";
+			projectPath?: string;
+		}) =>
+			invoke<void>("delete_claude_skill", {
+				name,
+				source,
+				projectPath,
+			}),
+		onSuccess: () => {
+			toast.success("Skill deleted successfully");
+			queryClient.invalidateQueries({ queryKey: ["claude-skills"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(`Failed to delete skill: ${errorMessage}`);
+		},
+	});
+};
+
 export const useTogglePlugin = () => {
 	const queryClient = useQueryClient();
 
