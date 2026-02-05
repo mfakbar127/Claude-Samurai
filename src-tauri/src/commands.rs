@@ -2326,11 +2326,15 @@ pub struct SkillFile {
     pub name: String,
     pub content: String,
     pub exists: bool,
+    #[serde(rename = "source")]
+    pub source: String, // "global" | "plugin" | "project"
+    #[serde(rename = "pluginName", skip_serializing_if = "Option::is_none")]
+    pub plugin_name: Option<String>,
+    #[serde(rename = "projectPath", skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
 }
 
-#[tauri::command]
-pub async fn list_claude_skills() -> Result<Vec<SkillFile>, String> {
-    let home_dir = home_dir()?;
+fn collect_user_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, String> {
     let skills_dir = home_dir.join(".claude/skills");
 
     if !skills_dir.exists() {
@@ -2366,8 +2370,200 @@ pub async fn list_claude_skills() -> Result<Vec<SkillFile>, String> {
             name: skill_name,
             content,
             exists: true,
+            source: "global".to_string(),
+            plugin_name: None,
+            project_path: None,
         });
     }
+
+    Ok(skills)
+}
+
+fn collect_plugin_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, String> {
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+
+    let mut enabled_cache: std::collections::HashMap<
+        PathBuf,
+        std::collections::HashMap<String, bool>,
+    > = std::collections::HashMap::new();
+    let mut skills = Vec::new();
+
+    for (plugin_name, installs) in installed.plugins {
+        for install in installs {
+            let enabled = if let Some(path) = enabled_plugins_settings_path(
+                home_dir,
+                &install.scope,
+                install.project_path.as_ref(),
+            ) {
+                let map = enabled_cache
+                    .entry(path.clone())
+                    .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
+                map.get(&plugin_name).copied().unwrap_or(true)
+            } else {
+                true
+            };
+
+            if !enabled {
+                continue;
+            }
+
+            let packages = detect_packages(&install.install_path)?;
+
+            if !packages.has_skills {
+                continue;
+            }
+
+            let skills_root = std::path::Path::new(&install.install_path).join("skills");
+
+            if !skills_root.exists() || !skills_root.is_dir() {
+                continue;
+            }
+
+            let entries = std::fs::read_dir(&skills_root)
+                .map_err(|e| format!("Failed to read skills directory: {}", e))?;
+
+            for entry in entries {
+                let entry =
+                    entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+                let path = entry.path();
+
+                if !path.is_dir() {
+                    continue;
+                }
+
+                let skill_name = path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let skill_md = path.join("SKILL.md");
+
+                if !skill_md.is_file() {
+                    continue;
+                }
+
+                let content = std::fs::read_to_string(&skill_md).map_err(|e| {
+                    format!(
+                        "Failed to read SKILL.md for plugin skill {}: {}",
+                        skill_name, e
+                    )
+                })?;
+
+                skills.push(SkillFile {
+                    name: skill_name,
+                    content,
+                    exists: true,
+                    source: "plugin".to_string(),
+                    plugin_name: Some(plugin_name.clone()),
+                    project_path: install.project_path.clone(),
+                });
+            }
+        }
+    }
+
+    Ok(skills)
+}
+
+fn collect_project_skills(home_dir: &std::path::Path) -> Result<Vec<SkillFile>, String> {
+    let plugins_file_path = home_dir.join(".claude/plugins/installed_plugins.json");
+
+    if !plugins_file_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let content = std::fs::read_to_string(&plugins_file_path)
+        .map_err(|e| format!("Failed to read installed_plugins.json: {}", e))?;
+
+    let installed: InstalledPluginsFile = serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse installed_plugins.json: {}", e))?;
+
+    let mut project_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for installs in installed.plugins.values() {
+        for install in installs {
+            if let Some(ref project_path) = install.project_path {
+                project_paths.insert(project_path.clone());
+            }
+        }
+    }
+
+    let mut skills = Vec::new();
+
+    for project_path in project_paths {
+        let project_skills_dir =
+            std::path::Path::new(&project_path).join(".claude/skills");
+
+        if !project_skills_dir.exists() || !project_skills_dir.is_dir() {
+            continue;
+        }
+
+        let entries = std::fs::read_dir(&project_skills_dir).map_err(|e| {
+            format!(
+                "Failed to read project skills directory {}: {}",
+                project_skills_dir.display(),
+                e
+            )
+        })?;
+
+        for entry in entries {
+            let entry =
+                entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let path = entry.path();
+
+            if !path.is_dir() {
+                continue;
+            }
+
+            let skill_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .to_string();
+            let skill_md = path.join("SKILL.md");
+
+            if !skill_md.is_file() {
+                continue;
+            }
+
+            let content = std::fs::read_to_string(&skill_md).map_err(|e| {
+                format!(
+                    "Failed to read SKILL.md for project skill {} (project {}): {}",
+                    skill_name, project_path, e
+                )
+            })?;
+
+            skills.push(SkillFile {
+                name: skill_name,
+                content,
+                exists: true,
+                source: "project".to_string(),
+                plugin_name: None,
+                project_path: Some(project_path.clone()),
+            });
+        }
+    }
+
+    Ok(skills)
+}
+
+#[tauri::command]
+pub async fn list_claude_skills() -> Result<Vec<SkillFile>, String> {
+    let home_dir = home_dir()?;
+    let mut skills = Vec::new();
+
+    skills.extend(collect_user_skills(&home_dir)?);
+    skills.extend(collect_plugin_skills(&home_dir)?);
+    skills.extend(collect_project_skills(&home_dir)?);
 
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     Ok(skills)
