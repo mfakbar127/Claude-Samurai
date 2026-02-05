@@ -1584,6 +1584,112 @@ pub struct MemoryFile {
     pub exists: bool,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct MemoryEntry {
+    pub name: String,
+    pub path: String,
+    pub content: String,
+    pub exists: bool,
+    #[serde(rename = "source")]
+    pub source: String, // "global" | "project"
+    #[serde(rename = "projectPath", skip_serializing_if = "Option::is_none")]
+    pub project_path: Option<String>,
+    pub disabled: bool,
+}
+
+fn global_memory_paths(home_dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+    let active = home_dir.join(".claude/CLAUDE.md");
+    let disabled = home_dir.join(".claude/CLAUDE.md.disabled");
+    (active, disabled)
+}
+
+fn project_memory_paths(project_path: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    let base = std::path::Path::new(project_path);
+    let active = base.join("CLAUDE.md");
+    let disabled = base.join("CLAUDE.md.disabled");
+    (active, disabled)
+}
+
+fn read_memory_entry_from_paths(
+    active_path: &std::path::Path,
+    disabled_path: &std::path::Path,
+    name: String,
+    source: String,
+    project_path: Option<String>,
+) -> Result<MemoryEntry, String> {
+    let (content_path, disabled) = if active_path.is_file() {
+        (active_path, false)
+    } else if disabled_path.is_file() {
+        (disabled_path, true)
+    } else {
+        // No file yet – treat as non-existing, empty memory
+        return Ok(MemoryEntry {
+            name,
+            path: path_to_string(active_path),
+            content: String::new(),
+            exists: false,
+            source,
+            project_path,
+            disabled: false,
+        });
+    };
+
+    let content = std::fs::read_to_string(content_path).map_err(|e| {
+        format!(
+            "Failed to read memory file {}: {}",
+            content_path.display(),
+            e
+        )
+    })?;
+
+    Ok(MemoryEntry {
+        name,
+        path: path_to_string(content_path),
+        content,
+        exists: true,
+        source,
+        project_path,
+        disabled,
+    })
+}
+
+fn get_project_paths_for_memory(
+    home_dir: &std::path::Path,
+) -> Result<Vec<String>, String> {
+    let claude_json_path = home_dir.join(".claude.json");
+
+    if !claude_json_path.exists() {
+        return Ok(vec![]);
+    }
+
+    let json_value = read_json_file(&claude_json_path, ".claude.json")?;
+
+    let projects_obj = json_value
+        .get("projects")
+        .and_then(|projects| projects.as_object())
+        .cloned()
+        .unwrap_or_else(serde_json::Map::new);
+
+    Ok(projects_obj.keys().cloned().collect())
+}
+
+fn resolve_memory_paths(
+    source: &str,
+    home_dir: &std::path::Path,
+    project_path: &Option<String>,
+) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
+    match source {
+        "global" => Ok(global_memory_paths(home_dir)),
+        "project" => {
+            let project = project_path
+                .as_ref()
+                .ok_or_else(|| "Project path is required for project memory".to_string())?;
+            Ok(project_memory_paths(project))
+        }
+        _ => Err("Unsupported source for memory file".to_string()),
+    }
+}
+
 #[tauri::command]
 pub async fn read_claude_memory() -> Result<MemoryFile, String> {
     let home_dir = home_dir()?;
@@ -1612,15 +1718,186 @@ pub async fn read_claude_memory() -> Result<MemoryFile, String> {
 #[tauri::command]
 pub async fn write_claude_memory(content: String) -> Result<(), String> {
     let home_dir = home_dir()?;
-    let claude_md_path = home_dir.join(".claude/CLAUDE.md");
+    let (active_path, disabled_path) = global_memory_paths(&home_dir);
 
     // Ensure .claude directory exists
-    if let Some(parent) = claude_md_path.parent() {
+    if let Some(parent) = active_path.parent() {
         ensure_dir(parent, ".claude directory")?;
     }
 
-    std::fs::write(&claude_md_path, content)
+    // Always write enabled global memory for this legacy command
+    std::fs::write(&active_path, content)
         .map_err(|e| format!("Failed to write CLAUDE.md file: {}", e))?;
+
+    // Remove disabled file if it exists to keep state consistent
+    if disabled_path.exists() {
+        std::fs::remove_file(&disabled_path)
+            .map_err(|e| format!("Failed to remove disabled CLAUDE.md file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_claude_memory_files() -> Result<Vec<MemoryEntry>, String> {
+    let home_dir = home_dir()?;
+    let mut entries = Vec::new();
+
+    // Global memory – always include an entry to mirror previous behavior
+    let (global_active, global_disabled) = global_memory_paths(&home_dir);
+    let global_entry = read_memory_entry_from_paths(
+        &global_active,
+        &global_disabled,
+        "global".to_string(),
+        "global".to_string(),
+        None,
+    )?;
+    entries.push(global_entry);
+
+    // Project memories – based on .claude.json projects keys
+    let project_paths = get_project_paths_for_memory(&home_dir)?;
+    for project_path in project_paths {
+        let (active, disabled) = project_memory_paths(&project_path);
+
+        // Only include project entries if a file actually exists
+        if !active.is_file() && !disabled.is_file() {
+            continue;
+        }
+
+        let name = std::path::Path::new(&project_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&project_path)
+            .to_string();
+
+        let entry = read_memory_entry_from_paths(
+            &active,
+            &disabled,
+            name,
+            "project".to_string(),
+            Some(project_path.clone()),
+        )?;
+
+        entries.push(entry);
+    }
+
+    // Sort: global first, then projects by name
+    entries.sort_by(|a, b| {
+        let order_a = if a.source == "global" { 0 } else { 1 };
+        let order_b = if b.source == "global" { 0 } else { 1 };
+
+        if order_a != order_b {
+            order_a.cmp(&order_b)
+        } else {
+            a.name.cmp(&b.name)
+        }
+    });
+
+    Ok(entries)
+}
+
+#[tauri::command]
+pub async fn write_claude_memory_file(
+    source: String,
+    project_path: Option<String>,
+    content: String,
+    disabled: bool,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    let (active_path, disabled_path) =
+        resolve_memory_paths(source.as_str(), &home_dir, &project_path)?;
+
+    // Ensure parent directory exists
+    if let Some(parent) = active_path.parent() {
+        ensure_dir(parent, "memory directory")?;
+    }
+
+    if disabled {
+        // Write to disabled path and remove active if it exists
+        std::fs::write(&disabled_path, content)
+            .map_err(|e| format!("Failed to write disabled memory file: {}", e))?;
+        if active_path.exists() {
+            std::fs::remove_file(&active_path)
+                .map_err(|e| format!("Failed to remove active memory file: {}", e))?;
+        }
+    } else {
+        // Write to active path and remove disabled if it exists
+        std::fs::write(&active_path, content)
+            .map_err(|e| format!("Failed to write memory file: {}", e))?;
+        if disabled_path.exists() {
+            std::fs::remove_file(&disabled_path)
+                .map_err(|e| format!("Failed to remove disabled memory file: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_claude_memory_file(
+    source: String,
+    project_path: Option<String>,
+    disabled: bool,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    let (active_path, disabled_path) =
+        resolve_memory_paths(source.as_str(), &home_dir, &project_path)?;
+
+    let (from, to) = if disabled {
+        // Disable: rename active -> disabled
+        (&active_path, &disabled_path)
+    } else {
+        // Enable: rename disabled -> active
+        (&disabled_path, &active_path)
+    };
+
+    if !from.exists() {
+        return Err(format!(
+            "Memory file {} does not exist",
+            from.display()
+        ));
+    }
+
+    std::fs::rename(from, to)
+        .map_err(|e| format!("Failed to toggle memory file: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_claude_memory_file(
+    source: String,
+    project_path: Option<String>,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+
+    let (active_path, disabled_path) =
+        resolve_memory_paths(source.as_str(), &home_dir, &project_path)?;
+
+    let mut removed_any = false;
+
+    if active_path.exists() {
+        std::fs::remove_file(&active_path)
+            .map_err(|e| format!("Failed to delete memory file {}: {}", active_path.display(), e))?;
+        removed_any = true;
+    }
+
+    if disabled_path.exists() {
+        std::fs::remove_file(&disabled_path).map_err(|e| {
+            format!(
+                "Failed to delete disabled memory file {}: {}",
+                disabled_path.display(),
+                e
+            )
+        })?;
+        removed_any = true;
+    }
+
+    if !removed_any {
+        return Err("No memory file found to delete".to_string());
+    }
 
     Ok(())
 }
@@ -2808,6 +3085,7 @@ pub struct AgentFile {
     pub name: String,
     pub content: String,
     pub exists: bool,
+    pub disabled: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -2834,28 +3112,56 @@ pub async fn read_claude_agents() -> Result<Vec<AgentFile>, String> {
 
     let mut agent_files = Vec::new();
 
-    // Read all .md files in the agents directory
+    // Read all .md and .md.disabled files in the agents directory
     let entries = std::fs::read_dir(&agents_dir)
         .map_err(|e| format!("Failed to read agents directory: {}", e))?;
 
     for entry in entries {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+        let entry =
+            entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
         let path = entry.path();
 
-        if path.is_file() && path.extension().map(|ext| ext == "md").unwrap_or(false) {
-            let file_name = path.file_stem()
+        if path.is_file() {
+            let file_name_str = path
+                .file_name()
                 .and_then(|name| name.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+                .unwrap_or("");
 
-            let content = std::fs::read_to_string(&path)
-                .map_err(|e| format!("Failed to read agent file {}: {}", path.display(), e))?;
+            // Check if it's a .md or .md.disabled file
+            let (is_agent_file, is_disabled) = if file_name_str.ends_with(".md.disabled")
+            {
+                (true, true)
+            } else if file_name_str.ends_with(".md") {
+                (true, false)
+            } else {
+                (false, false)
+            };
 
-            agent_files.push(AgentFile {
-                name: file_name,
-                content,
-                exists: true,
-            });
+            if is_agent_file {
+                // Extract the agent name (without .md or .md.disabled)
+                let agent_name = if is_disabled {
+                    file_name_str
+                        .trim_end_matches(".md.disabled")
+                        .to_string()
+                } else {
+                    file_name_str.trim_end_matches(".md").to_string()
+                };
+
+                let content = std::fs::read_to_string(&path).map_err(|e| {
+                    format!(
+                        "Failed to read agent file {}: {}",
+                        path.display(),
+                        e
+                    )
+                })?;
+
+                agent_files.push(AgentFile {
+                    name: agent_name,
+                    content,
+                    exists: true,
+                    disabled: is_disabled,
+                });
+            }
         }
     }
 
@@ -2884,12 +3190,53 @@ pub async fn write_claude_agent(agent_name: String, content: String) -> Result<(
 pub async fn delete_claude_agent(agent_name: String) -> Result<(), String> {
     let home_dir = home_dir()?;
     let agents_dir = home_dir.join(".claude/agents");
-    let agent_file_path = agents_dir.join(format!("{}.md", agent_name));
+    let active_path = agents_dir.join(format!("{}.md", agent_name));
+    let disabled_path = agents_dir.join(format!("{}.md.disabled", agent_name));
 
-    if agent_file_path.exists() {
-        std::fs::remove_file(&agent_file_path)
+    if active_path.exists() {
+        std::fs::remove_file(&active_path)
             .map_err(|e| format!("Failed to delete agent file: {}", e))?;
     }
+
+    if disabled_path.exists() {
+        std::fs::remove_file(&disabled_path)
+            .map_err(|e| format!("Failed to delete disabled agent file: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn toggle_claude_agent(
+    agent_name: String,
+    disabled: bool,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+    let agents_dir = home_dir.join(".claude/agents");
+
+    let (source_path, target_path) = if disabled {
+        // Disable: rename from .md to .md.disabled
+        (
+            agents_dir.join(format!("{}.md", agent_name)),
+            agents_dir.join(format!("{}.md.disabled", agent_name)),
+        )
+    } else {
+        // Enable: rename from .md.disabled to .md
+        (
+            agents_dir.join(format!("{}.md.disabled", agent_name)),
+            agents_dir.join(format!("{}.md", agent_name)),
+        )
+    };
+
+    if !source_path.exists() {
+        return Err(format!(
+            "Agent file {} does not exist",
+            source_path.display()
+        ));
+    }
+
+    std::fs::rename(&source_path, &target_path)
+        .map_err(|e| format!("Failed to toggle agent file: {}", e))?;
 
     Ok(())
 }

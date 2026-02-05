@@ -511,6 +511,16 @@ export interface MemoryFile {
 	exists: boolean;
 }
 
+export interface MemoryEntry {
+	name: string;
+	path: string;
+	content: string;
+	exists: boolean;
+	source: "global" | "project";
+	projectPath?: string;
+	disabled: boolean;
+}
+
 export const useClaudeMemory = () => {
 	return useSuspenseQuery({
 		queryKey: ["claude-memory"],
@@ -525,13 +535,122 @@ export const useWriteClaudeMemory = () => {
 		mutationFn: (content: string) =>
 			invoke<void>("write_claude_memory", { content }),
 		onSuccess: () => {
-			toast.success("Memory saved successfully");
+			toast.success(i18n.t("toast.memorySaved"));
+			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
+			queryClient.invalidateQueries({ queryKey: ["claude-memory-files"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(
+				i18n.t("toast.memorySaveFailed", { error: errorMessage }),
+			);
+		},
+	});
+};
+
+export const useClaudeMemoryFiles = () => {
+	return useQuery({
+		queryKey: ["claude-memory-files"],
+		queryFn: () => invoke<MemoryEntry[]>("list_claude_memory_files"),
+	});
+};
+
+export const useWriteClaudeMemoryFile = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			source,
+			projectPath,
+			content,
+			disabled,
+		}: {
+			source: "global" | "project";
+			projectPath?: string;
+			content: string;
+			disabled: boolean;
+		}) =>
+			invoke<void>("write_claude_memory_file", {
+				source,
+				projectPath,
+				content,
+				disabled,
+			}),
+		onSuccess: () => {
+			toast.success(i18n.t("toast.memorySaved"));
+			queryClient.invalidateQueries({ queryKey: ["claude-memory-files"] });
 			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
 		},
 		onError: (error) => {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
-			toast.error(`Failed to save memory: ${errorMessage}`);
+			toast.error(
+				i18n.t("toast.memorySaveFailed", { error: errorMessage }),
+			);
+		},
+	});
+};
+
+export const useToggleClaudeMemoryFile = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			source,
+			projectPath,
+			disabled,
+		}: {
+			source: "global" | "project";
+			projectPath?: string;
+			disabled: boolean;
+		}) =>
+			invoke<void>("toggle_claude_memory_file", {
+				source,
+				projectPath,
+				disabled,
+			}),
+		onSuccess: () => {
+			toast.success(i18n.t("toast.memoryToggled"));
+			queryClient.invalidateQueries({ queryKey: ["claude-memory-files"] });
+			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(
+				i18n.t("toast.memoryToggleFailed", { error: errorMessage }),
+			);
+		},
+	});
+};
+
+export const useDeleteClaudeMemoryFile = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			source,
+			projectPath,
+		}: {
+			source: "global" | "project";
+			projectPath?: string;
+		}) =>
+			invoke<void>("delete_claude_memory_file", {
+				source,
+				projectPath,
+			}),
+		onSuccess: () => {
+			toast.success(i18n.t("toast.memoryDeleted"));
+			queryClient.invalidateQueries({ queryKey: ["claude-memory-files"] });
+			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(
+				i18n.t("toast.memoryDeleteFailed", { error: errorMessage }),
+			);
 		},
 	});
 };
@@ -724,6 +843,30 @@ export const useWriteClaudeAgent = () => {
 			const errorMessage =
 				error instanceof Error ? error.message : String(error);
 			toast.error(`Failed to save agent: ${errorMessage}`);
+		},
+	});
+};
+
+export const useToggleClaudeAgent = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: ({
+			agentName,
+			disabled,
+		}: {
+			agentName: string;
+			disabled: boolean;
+		}) => invoke<void>("toggle_claude_agent", { agentName, disabled }),
+		onSuccess: () => {
+			toast.success("Agent toggled successfully");
+			queryClient.invalidateQueries({ queryKey: ["claude-agents"] });
+			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
+		},
+		onError: (error) => {
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
+			toast.error(`Failed to toggle agent: ${errorMessage}`);
 		},
 	});
 };

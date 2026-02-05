@@ -27,6 +27,7 @@ import {
 	useClaudeAgents,
 	useDeleteClaudeAgent,
 	usePluginAgents,
+	useToggleClaudeAgent,
 	useWriteClaudeAgent,
 } from "@/lib/query";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
@@ -35,6 +36,7 @@ type UnifiedAgent = {
 	name: string;
 	content: string;
 	exists: boolean;
+	disabled: boolean;
 	source: "user" | "plugin";
 	pluginName?: string;
 	pluginScope?: string;
@@ -47,6 +49,7 @@ function AgentsPageContent() {
 	const { data: pluginAgents, isLoading: isLoadingPlugin, error: errorPlugin } = usePluginAgents();
 	const writeAgent = useWriteClaudeAgent();
 	const deleteAgent = useDeleteClaudeAgent();
+	const toggleAgent = useToggleClaudeAgent();
 	const [agentEdits, setAgentEdits] = useState<Record<string, string>>({});
 	const [isDialogOpen, setIsDialogOpen] = useState(false);
 	const codeMirrorTheme = useCodeMirrorTheme();
@@ -54,24 +57,40 @@ function AgentsPageContent() {
 	const isLoading = isLoadingUser || isLoadingPlugin;
 	const error = errorUser || errorPlugin;
 
+	const sourceOrder: Record<UnifiedAgent["source"], number> = {
+		user: 0,
+		plugin: 1,
+	};
+
 	const agents: UnifiedAgent[] = [
 		...(userAgents || []).map((agent): UnifiedAgent => ({
 			name: agent.name,
 			content: agent.content,
 			exists: agent.exists,
+			disabled: agent.disabled,
 			source: "user",
-			sourcePath: `~/.claude/agents/${agent.name}.md`,
+			sourcePath: `~/.claude/agents/${agent.name}${agent.disabled ? ".md.disabled" : ".md"}`,
 		})),
 		...(pluginAgents || []).map((agent): UnifiedAgent => ({
 			name: agent.name,
 			content: agent.content,
 			exists: agent.exists,
+			disabled: false,
 			source: "plugin",
 			pluginName: agent.pluginName,
 			pluginScope: agent.pluginScope,
 			sourcePath: agent.sourcePath,
 		})),
-	].sort((a, b) => a.name.localeCompare(b.name));
+	].sort((a, b) => {
+		const orderA = sourceOrder[a.source] ?? 99;
+		const orderB = sourceOrder[b.source] ?? 99;
+
+		if (orderA !== orderB) {
+			return orderA - orderB;
+		}
+
+		return a.name.localeCompare(b.name);
+	});
 
 	if (isLoading) {
 		return (
@@ -117,6 +136,17 @@ function AgentsPageContent() {
 		if (confirmed) {
 			deleteAgent.mutate(agentName);
 		}
+	};
+
+	const handleToggleAgent = (agent: UnifiedAgent) => {
+		if (agent.source !== "user") {
+			return;
+		}
+
+		toggleAgent.mutate({
+			agentName: agent.name,
+			disabled: !agent.disabled,
+		});
 	};
 
 	return (
@@ -167,26 +197,46 @@ function AgentsPageContent() {
 										className="bg-card"
 									>
 										<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
-											<div className="flex items-center gap-2 flex-wrap">
-												<BotIcon size={12} />
-												<span className="font-medium">{agent.name}</span>
-												{agent.source === "user" ? (
-													<Badge variant="default">
-														{t("agents.sourceUser")}
+											<div className="flex items-center justify-between gap-2 w-full">
+												<div className="flex items-center gap-2 flex-wrap">
+													<BotIcon size={12} />
+													<span className="font-medium">{agent.name}</span>
+													<Badge
+														variant={agent.disabled ? "destructive" : "success"}
+													>
+														{agent.disabled ? "Disabled" : "Enabled"}
 													</Badge>
-												) : (
-													<>
-														<Badge variant="outline">
-															{agent.pluginName}
+													<span className="text-xs text-muted-foreground font-mono truncate max-w-xs">
+														{agent.sourcePath}
+													</span>
+												</div>
+												<div className="flex items-center gap-2">
+													{agent.source === "user" && (
+														<Badge variant="secondary">
+															{t("agents.sourceUser")}
 														</Badge>
-														<Badge variant={agent.pluginScope === "user" ? "default" : "secondary"}>
-															{agent.pluginScope === "user" ? t("plugins.scopeUser") : t("plugins.scopeLocal")}
-														</Badge>
-													</>
-												)}
-												<span className="text-sm text-muted-foreground font-normal">
-													{agent.sourcePath}
-												</span>
+													)}
+													{agent.source === "plugin" && agent.pluginName && (
+														<>
+															<Badge variant="secondary">
+																{`Plugins (${agent.pluginName})`}
+															</Badge>
+															{agent.pluginScope && (
+																<Badge
+																	variant={
+																		agent.pluginScope === "user"
+																			? "default"
+																			: "secondary"
+																	}
+																>
+																	{agent.pluginScope === "user"
+																		? t("plugins.scopeUser")
+																		: t("plugins.scopeLocal")}
+																</Badge>
+															)}
+														</>
+													)}
+												</div>
 											</div>
 										</AccordionTrigger>
 										<AccordionContent className="pb-3">
@@ -204,30 +254,47 @@ function AgentsPageContent() {
 														basicSetup={codeMirrorBasicSetup}
 													/>
 												</div>
-												<div className="flex justify-between bg-card">
-													<Button
-														variant="outline"
-														onClick={() => handleSaveAgent(agent.name)}
-														disabled={
-															writeAgent.isPending ||
-															agentEdits[agent.name] === undefined
-														}
-														size="sm"
-													>
-														<SaveIcon size={14} />
-														{writeAgent.isPending
-															? t("agents.saving")
-															: t("agents.save")}
-													</Button>
-
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleDeleteAgent(agent.name)}
-														disabled={deleteAgent.isPending}
-													>
-														<TrashIcon size={14} />
-													</Button>
+												<div className="flex justify-between bg-card px-1 py-1">
+													<div className="flex items-center text-xs text-muted-foreground font-mono">
+														<span className="truncate max-w-xs">
+															{agent.sourcePath}
+														</span>
+													</div>
+													<div className="flex gap-2">
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => handleSaveAgent(agent.name)}
+															disabled={
+																writeAgent.isPending ||
+																agentEdits[agent.name] === undefined
+															}
+														>
+															<SaveIcon size={12} className="mr-1" />
+															{writeAgent.isPending
+																? t("agents.saving")
+																: t("agents.save")}
+														</Button>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => handleToggleAgent(agent)}
+															disabled={
+																agent.source !== "user" || toggleAgent.isPending
+															}
+														>
+															{agent.disabled ? "Enable" : "Disable"}
+														</Button>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => handleDeleteAgent(agent.name)}
+															disabled={deleteAgent.isPending}
+														>
+															<TrashIcon size={12} className="mr-1" />
+															Delete
+														</Button>
+													</div>
 												</div>
 											</div>
 										</AccordionContent>

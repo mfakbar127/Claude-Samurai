@@ -176,29 +176,45 @@ function CommandsPageContent() {
 										className="bg-card"
 									>
 										<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
-											<div className="flex items-center gap-2 flex-wrap">
-												<TerminalIcon size={12} />
-												<span className="font-medium">{command.name}</span>
-												<Badge variant={command.disabled ? "secondary" : "success"}>
-													{command.disabled ? t("commands.disabled") : t("commands.enabled")}
-												</Badge>
-												{command.source === "user" ? (
-													<Badge variant="default">
-														{t("commands.sourceUser")}
+											<div className="flex items-center justify-between gap-2 w-full">
+												<div className="flex items-center gap-2 flex-wrap">
+													<TerminalIcon size={12} />
+													<span className="font-medium">{command.name}</span>
+													<Badge
+														variant={command.disabled ? "secondary" : "success"}
+													>
+														{command.disabled
+															? t("commands.disabled")
+															: t("commands.enabled")}
 													</Badge>
-												) : (
-													<>
-														<Badge variant="outline">
-															{command.pluginName}
+													<span className="text-xs text-muted-foreground font-mono truncate max-w-xs">
+														{command.sourcePath}
+													</span>
+												</div>
+												<div className="flex items-center gap-2">
+													{command.source === "user" ? (
+														<Badge variant="default">
+															{t("commands.sourceUser")}
 														</Badge>
-														<Badge variant={command.pluginScope === "user" ? "default" : "secondary"}>
-															{command.pluginScope === "user" ? t("plugins.scopeUser") : t("plugins.scopeLocal")}
-														</Badge>
-													</>
-												)}
-												<span className="text-sm text-muted-foreground font-normal">
-													{command.sourcePath}
-												</span>
+													) : (
+														<>
+															<Badge variant="outline">
+																{command.pluginName}
+															</Badge>
+															<Badge
+																variant={
+																	command.pluginScope === "user"
+																		? "default"
+																		: "secondary"
+																}
+															>
+																{command.pluginScope === "user"
+																	? t("plugins.scopeUser")
+																	: t("plugins.scopeLocal")}
+															</Badge>
+														</>
+													)}
+												</div>
 											</div>
 										</AccordionTrigger>
 										<AccordionContent className="pb-3">
@@ -216,41 +232,49 @@ function CommandsPageContent() {
 														basicSetup={codeMirrorBasicSetup}
 													/>
 												</div>
-												<div className="flex justify-between bg-card">
+												<div className="flex justify-between bg-card px-1 py-1">
+													<div className="flex items-center text-xs text-muted-foreground font-mono">
+														<span className="truncate max-w-xs">
+															{command.sourcePath}
+														</span>
+													</div>
 													<div className="flex gap-2">
 														<Button
 															variant="outline"
+															size="sm"
 															onClick={() => handleSaveCommand(command.name)}
 															disabled={
 																writeCommand.isPending ||
 																commandEdits[command.name] === undefined
 															}
-															size="sm"
 														>
-															<SaveIcon size={14} />
+															<SaveIcon size={12} className="mr-1" />
 															{writeCommand.isPending
 																? t("commands.saving")
 																: t("commands.save")}
 														</Button>
-
 														<Button
 															variant="outline"
 															size="sm"
-															onClick={() => handleToggleCommand(command.name, command.disabled)}
+															onClick={() =>
+																handleToggleCommand(command.name, command.disabled)
+															}
 															disabled={toggleCommand.isPending}
 														>
-															{command.disabled ? t("commands.enable") : t("commands.disable")}
+															{command.disabled
+																? t("commands.enable")
+																: t("commands.disable")}
+														</Button>
+														<Button
+															variant="outline"
+															size="sm"
+															onClick={() => handleDeleteCommand(command.name)}
+															disabled={deleteCommand.isPending}
+														>
+															<TrashIcon size={12} className="mr-1" />
+															Delete
 														</Button>
 													</div>
-
-													<Button
-														variant="ghost"
-														size="sm"
-														onClick={() => handleDeleteCommand(command.name)}
-														disabled={deleteCommand.isPending}
-													>
-														<TrashIcon size={14} />
-													</Button>
 												</div>
 											</div>
 										</AccordionContent>
@@ -350,12 +374,12 @@ function CreateCommandPanel({ onClose }: CreateCommandPanelProps) {
 				<div className="rounded-lg overflow-hidden border">
 					<CodeMirror
 						value={commandContent}
-						onChange={(value) => setCommandContent(value)}
 						height="200px"
 						theme={codeMirrorTheme}
-														placeholder={t("commands.contentPlaceholder")}
-														extensions={markdownExtensions}
-														basicSetup={codeMirrorBasicSetup}
+						onChange={(value) => setCommandContent(value)}
+						placeholder={t("commands.contentPlaceholder")}
+						extensions={markdownExtensions}
+						basicSetup={codeMirrorBasicSetup}
 					/>
 				</div>
 			</div>
