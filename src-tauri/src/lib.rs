@@ -279,7 +279,11 @@ pub fn run() {
             toggle_claude_skill,
             write_claude_skill,
             delete_claude_skill,
-            get_hooks_settings
+            get_hooks_settings,
+            get_security_templates,
+            get_installed_security_templates,
+            install_security_template,
+            uninstall_security_template
         ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]

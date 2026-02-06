@@ -10,6 +10,7 @@ import {
 	SettingsIcon,
 	SparklesIcon,
 	TerminalIcon,
+	ShieldCheckIcon,
 } from "lucide-react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -62,6 +63,16 @@ export function Layout() {
 					icon: CpuIcon,
 					label: t("navigation.mcp"),
 				},
+				{
+					to: "/memory",
+					icon: BrainIcon,
+					label: t("navigation.memory"),
+				},
+				{
+					to: "/plugins",
+					icon: PackageIcon,
+					label: t("navigation.plugins"),
+				},
 			],
 		},
 		{
@@ -69,9 +80,9 @@ export function Layout() {
 			label: t("navigation.section.automation", { defaultValue: "Automation" }),
 			items: [
 				{
-					to: "/hooks",
-					icon: CpuIcon,
-					label: t("hooks.title"),
+					to: "/agents",
+					icon: BotIcon,
+					label: "Agents",
 				},
 				{
 					to: "/commands",
@@ -84,9 +95,9 @@ export function Layout() {
 					label: t("navigation.skills"),
 				},
 				{
-					to: "/agents",
-					icon: BotIcon,
-					label: "Agents",
+					to: "/hooks",
+					icon: CpuIcon,
+					label: t("hooks.title"),
 				},
 			],
 		},
@@ -95,14 +106,9 @@ export function Layout() {
 			label: t("navigation.section.system", { defaultValue: "System" }),
 			items: [
 				{
-					to: "/memory",
-					icon: BrainIcon,
-					label: t("navigation.memory"),
-				},
-				{
-					to: "/plugins",
-					icon: PackageIcon,
-					label: t("navigation.plugins"),
+					to: "/security-packs",
+					icon: ShieldCheckIcon,
+					label: "Security Packs",
 				},
 				{
 					to: "/notification",

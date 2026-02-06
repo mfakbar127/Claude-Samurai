@@ -3771,3 +3771,319 @@ fn read_command_file(
         source_path: path_to_string(path),
     }))
 }
+
+// -----------------------------------------------------------------------------
+// Security Packs (Security Templates) – install/uninstall & manifest
+// -----------------------------------------------------------------------------
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AgentTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SkillTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct CommandTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(rename = "sourcePath")]
+    pub source_path: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct McpTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    #[serde(rename = "serverName")]
+    pub server_name: String,
+    #[serde(rename = "serverConfig")]
+    pub server_config: Value,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SecurityTemplatesFile {
+    pub agents: Vec<AgentTemplate>,
+    pub skills: Vec<SkillTemplate>,
+    pub commands: Vec<CommandTemplate>,
+    pub mcp: Vec<McpTemplate>,
+    // Reserved for future use – currently unused in phase 1
+    pub plugins: Vec<Value>,
+    pub hooks: Vec<Value>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct SkillFilePayload {
+    #[serde(rename = "relativePath")]
+    pub relative_path: String,
+    pub content: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SecurityPackInstallPayload {
+    #[serde(rename = "type")]
+    pub template_type: String, // "agent" | "command" | "skill" | "mcp"
+    pub id: String,
+    pub content: Option<String>,                    // for agents/commands
+    #[serde(rename = "skillFiles")]
+    pub skill_files: Option<Vec<SkillFilePayload>>, // for skills (full directory)
+    #[serde(rename = "serverName")]
+    pub server_name: Option<String>,                // for MCP
+    #[serde(rename = "serverConfig")]
+    pub server_config: Option<Value>,               // for MCP
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct InstalledSecurityPackItem {
+    #[serde(rename = "type")]
+    pub template_type: String,
+    pub id: String,
+    #[serde(rename = "targetPath")]
+    pub target_path: String,
+    #[serde(rename = "installedAt")]
+    pub installed_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct InstalledSecurityPacksFile {
+    pub version: u32,
+    pub items: Vec<InstalledSecurityPackItem>,
+}
+
+fn security_packs_manifest_path() -> Result<std::path::PathBuf, String> {
+    let home_dir = home_dir()?;
+    let app_config_path = home_dir.join(APP_CONFIG_DIR);
+    let security_packs_dir = app_config_path.join("security_packs");
+    ensure_dir(&security_packs_dir, "security packs directory")?;
+    Ok(security_packs_dir.join("installed.json"))
+}
+
+fn read_security_packs_manifest() -> Result<InstalledSecurityPacksFile, String> {
+    let path = security_packs_manifest_path()?;
+    if !path.exists() {
+        return Ok(InstalledSecurityPacksFile {
+            version: 1,
+            items: Vec::new(),
+        });
+    }
+
+    let value = read_json_file(&path, "security packs manifest")?;
+    let manifest: InstalledSecurityPacksFile = serde_json::from_value(value)
+        .map_err(|e| format!("Failed to parse security packs manifest: {}", e))?;
+    Ok(manifest)
+}
+
+fn write_security_packs_manifest(manifest: &InstalledSecurityPacksFile) -> Result<(), String> {
+    let path = security_packs_manifest_path()?;
+    write_json_file_serialize(&path, manifest, "security packs manifest")
+}
+
+fn load_security_templates_from_assets() -> Result<SecurityTemplatesFile, String> {
+    // The JSON file lives under the frontend src assets directory.
+    // We include it at compile time so the backend can serve it to the UI.
+    let raw = include_str!("../../src/assets/security_packs/security_templates.json");
+    serde_json::from_str(raw)
+        .map_err(|e| format!("Failed to parse security_templates.json: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_security_templates() -> Result<SecurityTemplatesFile, String> {
+    load_security_templates_from_assets()
+}
+
+#[tauri::command]
+pub async fn get_installed_security_templates() -> Result<Vec<InstalledSecurityPackItem>, String> {
+    let manifest = read_security_packs_manifest()?;
+    Ok(manifest.items)
+}
+
+#[tauri::command]
+pub async fn install_security_template(
+    payload: SecurityPackInstallPayload,
+) -> Result<(), String> {
+    let home_dir = home_dir()?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    let mut manifest = read_security_packs_manifest()?;
+
+    match payload.template_type.as_str() {
+        "agent" => {
+            let content = payload
+                .content
+                .ok_or_else(|| "Agent install payload missing content".to_string())?;
+            let agents_dir = home_dir.join(".claude/agents");
+            ensure_dir(&agents_dir, ".claude/agents directory")?;
+            let target = agents_dir.join(format!("{}.md", payload.id));
+            if target.exists() {
+                return Err(format!(
+                    "Agent file already exists: {}",
+                    target.display()
+                ));
+            }
+            std::fs::write(&target, content)
+                .map_err(|e| format!("Failed to write agent file {}: {}", target.display(), e))?;
+
+            manifest.items.push(InstalledSecurityPackItem {
+                template_type: "agent".to_string(),
+                id: payload.id,
+                target_path: path_to_string(&target),
+                installed_at: now,
+            });
+        }
+        "command" => {
+            let content = payload
+                .content
+                .ok_or_else(|| "Command install payload missing content".to_string())?;
+            let commands_dir = home_dir.join(".claude/commands");
+            ensure_dir(&commands_dir, ".claude/commands directory")?;
+            let target = commands_dir.join(format!("{}.md", payload.id));
+            if target.exists() {
+                return Err(format!(
+                    "Command file already exists: {}",
+                    target.display()
+                ));
+            }
+            std::fs::write(&target, content).map_err(|e| {
+                format!(
+                    "Failed to write command file {}: {}",
+                    target.display(),
+                    e
+                )
+            })?;
+
+            manifest.items.push(InstalledSecurityPackItem {
+                template_type: "command".to_string(),
+                id: payload.id,
+                target_path: path_to_string(&target),
+                installed_at: now,
+            });
+        }
+        "skill" => {
+            let skill_files = payload
+                .skill_files
+                .ok_or_else(|| "Skill install payload missing skillFiles".to_string())?;
+            let skills_root = home_dir.join(".claude/skills");
+            ensure_dir(&skills_root, ".claude/skills directory")?;
+            let target_dir = skills_root.join(&payload.id);
+            if target_dir.exists() {
+                return Err(format!(
+                    "Skill directory already exists: {}",
+                    target_dir.display()
+                ));
+            }
+            ensure_dir(&target_dir, "skill directory")?;
+
+            for file in skill_files {
+                let rel = std::path::Path::new(&file.relative_path);
+                // Prevent directory traversal outside the skill root
+                if rel.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+                    return Err(format!(
+                        "Invalid skill file path (parent dir not allowed): {}",
+                        file.relative_path
+                    ));
+                }
+                let full_path = target_dir.join(rel);
+                if let Some(parent) = full_path.parent() {
+                    ensure_dir(parent, "skill file parent directory")?;
+                }
+                std::fs::write(&full_path, &file.content).map_err(|e| {
+                    format!(
+                        "Failed to write skill file {}: {}",
+                        full_path.display(),
+                        e
+                    )
+                })?;
+            }
+
+            manifest.items.push(InstalledSecurityPackItem {
+                template_type: "skill".to_string(),
+                id: payload.id,
+                target_path: path_to_string(&target_dir),
+                installed_at: now,
+            });
+        }
+        "mcp" => {
+            let server_name = payload
+                .server_name
+                .ok_or_else(|| "MCP install payload missing serverName".to_string())?;
+            let server_config = payload
+                .server_config
+                .ok_or_else(|| "MCP install payload missing serverConfig".to_string())?;
+
+            // Reuse existing helper to write into ~/.mcp.json
+            update_global_mcp_server(server_name.clone(), server_config).await?;
+
+            manifest.items.push(InstalledSecurityPackItem {
+                template_type: "mcp".to_string(),
+                id: server_name,
+                target_path: String::from("mcp"),
+                installed_at: now,
+            });
+        }
+        other => {
+            return Err(format!("Unsupported security template type: {}", other));
+        }
+    }
+
+    write_security_packs_manifest(&manifest)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn uninstall_security_template(
+    template_type: String,
+    id: String,
+) -> Result<(), String> {
+    let mut manifest = read_security_packs_manifest()?;
+    let mut remaining: Vec<InstalledSecurityPackItem> = Vec::new();
+
+    for item in manifest.items.into_iter() {
+        if item.template_type == template_type && item.id == id {
+            match item.template_type.as_str() {
+                "agent" | "command" => {
+                    let path = std::path::PathBuf::from(&item.target_path);
+                    if path.exists() {
+                        std::fs::remove_file(&path).map_err(|e| {
+                            format!("Failed to remove file {}: {}", path.display(), e)
+                        })?;
+                    }
+                }
+                "skill" => {
+                    let path = std::path::PathBuf::from(&item.target_path);
+                    if path.exists() {
+                        std::fs::remove_dir_all(&path).map_err(|e| {
+                            format!("Failed to remove skill directory {}: {}", path.display(), e)
+                        })?;
+                    }
+                }
+                "mcp" => {
+                    // For MCP, id is the serverName we previously installed.
+                    delete_global_mcp_server(item.id.clone()).await?;
+                }
+                _ => {
+                    // Unknown type – ignore but drop from manifest
+                }
+            }
+        } else {
+            remaining.push(item);
+        }
+    }
+
+    manifest.items = remaining;
+    write_security_packs_manifest(&manifest)?;
+    Ok(())
+}
+

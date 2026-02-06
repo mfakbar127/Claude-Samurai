@@ -12,6 +12,7 @@ import { MemoryPage } from "./pages/MemoryPage";
 import { SkillsPage } from "./pages/SkillsPage";
 import { NotificationPage } from "./pages/NotificationPage";
 import { PluginsPage } from "./pages/PluginsPage";
+import { SecurityPacksPage } from "./pages/SecurityPacksPage";
 import { Detail } from "./pages/projects/Detail";
 import { ProjectsLayout } from "./pages/projects/Layout";
 import { List } from "./pages/projects/List";
@@ -74,6 +75,10 @@ const router = createBrowserRouter([
 			{
 				path: "plugins",
 				element: wrapRoute(<PluginsPage />),
+			},
+			{
+				path: "security-packs",
+				element: wrapRoute(<SecurityPacksPage />),
 			},
 			{
 				path: "projects",

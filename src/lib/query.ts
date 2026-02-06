@@ -929,6 +929,55 @@ export interface SkillFile {
 	disabled: boolean;
 }
 
+// Security Packs (Security Templates)
+
+export type SecurityPackType = "agent" | "command" | "skill" | "mcp";
+
+export interface AgentTemplate {
+	id: string;
+	title: string;
+	description: string;
+	sourcePath: string;
+}
+
+export interface SkillTemplate {
+	id: string;
+	title: string;
+	description: string;
+	sourcePath: string;
+}
+
+export interface CommandTemplate {
+	id: string;
+	title: string;
+	description: string;
+	sourcePath: string;
+}
+
+export interface McpTemplate {
+	id: string;
+	title: string;
+	description: string;
+	serverName: string;
+	serverConfig: Record<string, any>;
+}
+
+export interface SecurityTemplates {
+	agents: AgentTemplate[];
+	skills: SkillTemplate[];
+	commands: CommandTemplate[];
+	mcp: McpTemplate[];
+	plugins: unknown[];
+	hooks: unknown[];
+}
+
+export interface InstalledSecurityPackItem {
+	type: SecurityPackType;
+	id: string;
+	targetPath: string;
+	installedAt: string;
+}
+
 export const useClaudeSkills = () =>
 	useQuery({
 		queryKey: ["claude-skills"],
@@ -1022,6 +1071,74 @@ export const useDeleteClaudeSkill = () => {
 		onError: (error) => {
 			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to delete skill: ${errorMessage}`);
+		},
+	});
+};
+
+// Security Packs hooks
+
+export const useSecurityTemplates = () =>
+	useQuery({
+		queryKey: ["security-templates"],
+		queryFn: () => invoke<SecurityTemplates>("get_security_templates"),
+	});
+
+export const useInstalledSecurityTemplates = () =>
+	useQuery({
+		queryKey: ["installed-security-templates"],
+		queryFn: () =>
+			invoke<InstalledSecurityPackItem[]>("get_installed_security_templates"),
+	});
+
+export const useInstallSecurityTemplate = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (body: {
+			type: SecurityPackType;
+			id: string;
+			content?: string;
+			skillFiles?: { relativePath: string; content: string }[];
+			serverName?: string;
+			serverConfig?: Record<string, any>;
+		}) =>
+			invoke<void>("install_security_template", {
+				payload: {
+					type: body.type,
+					id: body.id,
+					content: body.content,
+					skillFiles: body.skillFiles,
+					serverName: body.serverName,
+					serverConfig: body.serverConfig,
+				},
+			}),
+		onSuccess: () => {
+			toast.success("Security template installed");
+			queryClient.invalidateQueries({ queryKey: ["installed-security-templates"] });
+		},
+		onError: (error) => {
+			const errorMessage = getErrorMessage(error);
+			toast.error(`Failed to install security template: ${errorMessage}`);
+		},
+	});
+};
+
+export const useUninstallSecurityTemplate = () => {
+	const queryClient = useQueryClient();
+
+	return useMutation({
+		mutationFn: (body: { type: SecurityPackType; id: string }) =>
+			invoke<void>("uninstall_security_template", {
+				templateType: body.type,
+				id: body.id,
+			}),
+		onSuccess: () => {
+			toast.success("Security template uninstalled");
+			queryClient.invalidateQueries({ queryKey: ["installed-security-templates"] });
+		},
+		onError: (error) => {
+			const errorMessage = getErrorMessage(error);
+			toast.error(`Failed to uninstall security template: ${errorMessage}`);
 		},
 	});
 };

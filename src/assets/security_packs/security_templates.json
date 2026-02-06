@@ -1,0 +1,332 @@
+{
+  "agents": [
+    {
+      "id": "appsec-review",
+      "title": "AppSec Review Agent",
+      "description": "Reviews diffs and PRs for common application security issues.",
+      "sourcePath": "agents/appsec-review.md"
+    },
+    {
+      "id": "secrets-scan",
+      "title": "Secrets Scan Agent",
+      "description": "Scans code and config for hard-coded secrets and credentials.",
+      "sourcePath": "agents/secrets-scan.md"
+    },
+    {
+      "id": "dependency-audit",
+      "title": "Dependency Audit Agent",
+      "description": "Reviews dependency manifests and lockfiles for vulnerable packages.",
+      "sourcePath": "agents/dependency-audit.md"
+    },
+    {
+      "id": "api-hardening",
+      "title": "API Hardening Agent",
+      "description": "Assists with reviewing and hardening API endpoints and schemas.",
+      "sourcePath": "agents/api-hardening.md"
+    },
+    {
+      "id": "ci-security-guard",
+      "title": "CI Security Guard Agent",
+      "description": "Reviews CI pipelines for insecure patterns and missing checks.",
+      "sourcePath": "agents/ci-security-guard.md"
+    },
+    {
+      "id": "infra-drift-detect",
+      "title": "Infra Drift Detector Agent",
+      "description": "Helps detect and explain infrastructure drift from IaC baselines.",
+      "sourcePath": "agents/infra-drift-detect.md"
+    },
+    {
+      "id": "log-anomaly-hunter",
+      "title": "Log Anomaly Hunter Agent",
+      "description": "Guides log triage to find suspicious or anomalous events.",
+      "sourcePath": "agents/log-anomaly-hunter.md"
+    },
+    {
+      "id": "compliance-checker",
+      "title": "Compliance Checker Agent",
+      "description": "Reviews artifacts against basic compliance checklists (e.g. SOC2-style).",
+      "sourcePath": "agents/compliance-checker.md"
+    },
+    {
+      "id": "phishing-sim",
+      "title": "Phishing Simulation Agent",
+      "description": "Helps design and analyze phishing simulation campaigns.",
+      "sourcePath": "agents/phishing-sim.md"
+    },
+    {
+      "id": "vuln-triage-assistant",
+      "title": "Vulnerability Triage Assistant",
+      "description": "Assists in triaging vulnerability reports and prioritizing fixes.",
+      "sourcePath": "agents/vuln-triage-assistant.md"
+    },
+    {
+      "id": "threat-modeling-coach",
+      "title": "Threat Modeling Coach Agent",
+      "description": "Guides developers through lightweight threat modeling exercises.",
+      "sourcePath": "agents/threat-modeling-coach.md"
+    }
+  ],
+  "skills": [
+    {
+      "id": "threat-intel-enricher",
+      "title": "Threat Intel Enricher",
+      "description": "Enriches security alerts with external threat intelligence feeds.",
+      "sourcePath": "skills/threat-intel-enricher/SKILL.md"
+    },
+    {
+      "id": "sast-helper",
+      "title": "SAST Helper Skill",
+      "description": "Interprets static analysis results and suggests code fixes.",
+      "sourcePath": "skills/sast-helper/SKILL.md"
+    },
+    {
+      "id": "dast-helper",
+      "title": "DAST Helper Skill",
+      "description": "Explains dynamic scan findings and how to reproduce them safely.",
+      "sourcePath": "skills/dast-helper/SKILL.md"
+    },
+    {
+      "id": "compliance-writer",
+      "title": "Compliance Writer Skill",
+      "description": "Drafts security policy and compliance documentation from templates.",
+      "sourcePath": "skills/compliance-writer/SKILL.md"
+    },
+    {
+      "id": "incident-timeline-builder",
+      "title": "Incident Timeline Builder Skill",
+      "description": "Helps construct clear timelines from fragmented incident data.",
+      "sourcePath": "skills/incident-timeline-builder/SKILL.md"
+    },
+    {
+      "id": "cloud-config-auditor",
+      "title": "Cloud Config Auditor Skill",
+      "description": "Reviews cloud configuration snippets for common misconfigurations.",
+      "sourcePath": "skills/cloud-config-auditor/SKILL.md"
+    },
+    {
+      "id": "k8s-security-auditor",
+      "title": "Kubernetes Security Auditor Skill",
+      "description": "Analyzes Kubernetes manifests for insecure settings.",
+      "sourcePath": "skills/k8s-security-auditor/SKILL.md"
+    },
+    {
+      "id": "rbac-analyzer",
+      "title": "RBAC Analyzer Skill",
+      "description": "Helps analyze and simplify complex RBAC configurations.",
+      "sourcePath": "skills/rbac-analyzer/SKILL.md"
+    },
+    {
+      "id": "seclog-parser",
+      "title": "Security Log Parser Skill",
+      "description": "Parses and normalizes various security log formats.",
+      "sourcePath": "skills/seclog-parser/SKILL.md"
+    },
+    {
+      "id": "risk-register-helper",
+      "title": "Risk Register Helper Skill",
+      "description": "Assists in drafting and updating entries in a risk register.",
+      "sourcePath": "skills/risk-register-helper/SKILL.md"
+    },
+    {
+      "id": "redteam-automation",
+      "title": "Red Team Automation Skill",
+      "description": "Helps design repeatable red-team style test plans and workflows.",
+      "sourcePath": "skills/redteam-automation/SKILL.md"
+    }
+  ],
+  "commands": [
+    {
+      "id": "scan-repo",
+      "title": "scan_repo Command",
+      "description": "Runs a security scan over the current repository.",
+      "sourcePath": "commands/scan-repo.md"
+    },
+    {
+      "id": "summarize-alerts",
+      "title": "summarize_alerts Command",
+      "description": "Summarizes a batch of alerts into a concise incident briefing.",
+      "sourcePath": "commands/summarize-alerts.md"
+    },
+    {
+      "id": "review-ci-pipeline",
+      "title": "review_ci_pipeline Command",
+      "description": "Reviews CI configuration files for missing security checks.",
+      "sourcePath": "commands/review-ci-pipeline.md"
+    },
+    {
+      "id": "analyze-logs",
+      "title": "analyze_logs Command",
+      "description": "Parses and analyzes logs for suspicious patterns.",
+      "sourcePath": "commands/analyze-logs.md"
+    },
+    {
+      "id": "inspect-k8s-manifests",
+      "title": "inspect_k8s_manifests Command",
+      "description": "Inspects Kubernetes manifests for insecure defaults.",
+      "sourcePath": "commands/inspect-k8s-manifests.md"
+    },
+    {
+      "id": "cloud-config-diff",
+      "title": "cloud_config_diff Command",
+      "description": "Compares two versions of cloud config to highlight risky drift.",
+      "sourcePath": "commands/cloud-config-diff.md"
+    },
+    {
+      "id": "review-secrets-usage",
+      "title": "review_secrets_usage Command",
+      "description": "Reviews how secrets are fetched and used in code paths.",
+      "sourcePath": "commands/review-secrets-usage.md"
+    },
+    {
+      "id": "threat-model-session",
+      "title": "threat_model_session Command",
+      "description": "Guides a short, text-based threat-modeling session for a feature.",
+      "sourcePath": "commands/threat-model-session.md"
+    },
+    {
+      "id": "policy-gap-check",
+      "title": "policy_gap_check Command",
+      "description": "Checks implementation details against high-level security policy.",
+      "sourcePath": "commands/policy-gap-check.md"
+    },
+    {
+      "id": "triage-finding",
+      "title": "triage_finding Command",
+      "description": "Helps triage an individual security finding for impact and priority.",
+      "sourcePath": "commands/triage-finding.md"
+    },
+    {
+      "id": "prepare-incident-report",
+      "title": "prepare_incident_report Command",
+      "description": "Generates a structured incident report draft from raw notes.",
+      "sourcePath": "commands/prepare-incident-report.md"
+    }
+  ],
+  "mcp": [
+    {
+      "id": "threat-intel-api",
+      "title": "Threat Intel MCP",
+      "description": "MCP server for enriching alerts with external threat intel.",
+      "serverName": "threat-intel-api",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "code-sast-mcp",
+      "title": "Code SAST MCP",
+      "description": "Remote static analysis MCP server for code repositories.",
+      "serverName": "code-sast",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://sast.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "dep-audit-mcp",
+      "title": "Dependency Audit MCP",
+      "description": "Checks dependencies against a vulnerability database.",
+      "serverName": "dep-audit",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://deps.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "cloud-config-mcp",
+      "title": "Cloud Config MCP",
+      "description": "Analyzes cloud configuration documents for risk.",
+      "serverName": "cloud-config",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://cloudconfig.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "log-analytics-mcp",
+      "title": "Log Analytics MCP",
+      "description": "Provides log search and aggregation capabilities.",
+      "serverName": "log-analytics",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://logs.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "siem-connector-mcp",
+      "title": "SIEM Connector MCP",
+      "description": "Connects to a SIEM to pull and summarize alerts.",
+      "serverName": "siem-connector",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://siem.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "k8s-audit-mcp",
+      "title": "Kubernetes Audit MCP",
+      "description": "Analyzes Kubernetes audit logs for suspicious events.",
+      "serverName": "k8s-audit",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://k8s-audit.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "cloudtrail-mcp",
+      "title": "CloudTrail MCP",
+      "description": "Surfaces interesting CloudTrail events to Claude.",
+      "serverName": "cloudtrail",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://cloudtrail.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "phishing-intel-mcp",
+      "title": "Phishing Intel MCP",
+      "description": "Provides signals about known phishing domains and senders.",
+      "serverName": "phishing-intel",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://phishing-intel.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "malware-intel-mcp",
+      "title": "Malware Intel MCP",
+      "description": "Looks up file hashes and URLs against malware feeds.",
+      "serverName": "malware-intel",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://malware-intel.example.com/mcp",
+        "headers": {}
+      }
+    },
+    {
+      "id": "ip-reputation-mcp",
+      "title": "IP Reputation MCP",
+      "description": "Provides reputation and geo information for IP addresses.",
+      "serverName": "ip-reputation",
+      "serverConfig": {
+        "type": "http",
+        "url": "https://ip-reputation.example.com/mcp",
+        "headers": {}
+      }
+    }
+  ],
+  "plugins": [],
+  "hooks": []
+}
+
