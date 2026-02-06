@@ -9,6 +9,16 @@ import { nanoid } from "nanoid";
 import { toast } from "sonner";
 import i18n from "../i18n";
 
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+async function rebuildTrayMenu(): Promise<void> {
+	return invoke<void>("rebuild_tray_menu_command").catch((error: unknown) => {
+		console.error("Failed to rebuild tray menu:", error);
+	});
+}
+
 export type ConfigType =
 	| "user"
 	| "enterprise_macos"
@@ -74,6 +84,14 @@ export interface PluginAgentFile {
 	sourcePath: string;
 }
 
+export interface HooksConfigEntry {
+	source: "project_local" | "project" | "user";
+	path: string;
+	exists: boolean;
+	hooks?: any;
+	error?: string;
+}
+
 export const useConfigFiles = () => {
 	return useQuery({
 		queryKey: ["config-files"],
@@ -86,6 +104,13 @@ export const useConfigFile = (configType: ConfigType) => {
 		queryKey: ["config-file", configType],
 		queryFn: () => invoke<ConfigFile>("read_config_file", { configType }),
 		enabled: !!configType,
+	});
+};
+
+export const useHooksSettings = (cwd?: string) => {
+	return useSuspenseQuery({
+		queryKey: ["hooks-settings", cwd],
+		queryFn: () => invoke<HooksConfigEntry[]>("get_hooks_settings", { cwd }),
 	});
 };
 
@@ -110,8 +135,7 @@ export const useWriteConfigFile = () => {
 			queryClient.invalidateQueries({ queryKey: ["config-files"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.configSaveFailed", { error: errorMessage }));
 		},
 	});
@@ -124,8 +148,7 @@ export const useBackupClaudeConfigs = () => {
 			toast.success(i18n.t("toast.backupSuccess"));
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.backupFailed", { error: errorMessage }));
 		},
 	});
@@ -175,8 +198,7 @@ export const useCreateConfig = () => {
 			await rebuildTrayMenu();
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.storeCreateFailed", { error: errorMessage }));
 		},
 	});
@@ -197,8 +219,7 @@ export const useDeleteConfig = () => {
 			await rebuildTrayMenu();
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.storeDeleteFailed", { error: errorMessage }));
 		},
 	});
@@ -217,8 +238,7 @@ export const useSetUsingConfig = () => {
 			queryClient.invalidateQueries({ queryKey: ["config-file", "user"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.storeActivateFailed", { error: errorMessage }));
 		},
 	});
@@ -281,8 +301,7 @@ export const useUpdateConfig = () => {
 			await rebuildTrayMenu();
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.storeSaveFailed", { error: errorMessage }));
 		},
 	});
@@ -319,8 +338,7 @@ export const useInstallAndRestart = () => {
 		},
 		onError: (error) => {
 			console.log("❌ Frontend: Update installation failed", error);
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.updateInstallFailed", { error: errorMessage }));
 		},
 	});
@@ -353,8 +371,7 @@ export const useUpdateGlobalMcpServer = () => {
 			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to update MCP server: ${errorMessage}`);
 		},
 	});
@@ -378,8 +395,7 @@ export const useAddGlobalMcpServer = () => {
 			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to add MCP server: ${errorMessage}`);
 		},
 	});
@@ -409,8 +425,7 @@ export const useDeleteGlobalMcpServer = () => {
 			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to delete MCP server: ${errorMessage}`);
 		},
 	});
@@ -457,8 +472,7 @@ export const useToggleMcpServer = (cwd?: string) => {
 			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state", cwd] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to toggle MCP server: ${errorMessage}`);
 		},
 	});
@@ -540,8 +554,7 @@ export const useWriteClaudeMemory = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-memory-files"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(
 				i18n.t("toast.memorySaveFailed", { error: errorMessage }),
 			);
@@ -583,8 +596,7 @@ export const useWriteClaudeMemoryFile = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(
 				i18n.t("toast.memorySaveFailed", { error: errorMessage }),
 			);
@@ -616,8 +628,7 @@ export const useToggleClaudeMemoryFile = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(
 				i18n.t("toast.memoryToggleFailed", { error: errorMessage }),
 			);
@@ -646,8 +657,7 @@ export const useDeleteClaudeMemoryFile = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-memory"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(
 				i18n.t("toast.memoryDeleteFailed", { error: errorMessage }),
 			);
@@ -694,8 +704,7 @@ export const useWriteClaudeConfigFile = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-projects"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to save Claude configuration: ${errorMessage}`);
 		},
 	});
@@ -723,8 +732,7 @@ export const useUpdateNotificationSettings = () => {
 			queryClient.invalidateQueries({ queryKey: ["notification-settings"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to update notification settings: ${errorMessage}`);
 		},
 	});
@@ -760,8 +768,7 @@ export const useWriteClaudeCommand = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.commandSaveFailed", { error: errorMessage }));
 		},
 	});
@@ -779,8 +786,7 @@ export const useDeleteClaudeCommand = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.commandDeleteFailed", { error: errorMessage }));
 		},
 	});
@@ -803,8 +809,7 @@ export const useToggleClaudeCommand = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-commands"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(i18n.t("toast.commandToggleFailed", { error: errorMessage }));
 		},
 	});
@@ -840,8 +845,7 @@ export const useWriteClaudeAgent = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to save agent: ${errorMessage}`);
 		},
 	});
@@ -864,8 +868,7 @@ export const useToggleClaudeAgent = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to toggle agent: ${errorMessage}`);
 		},
 	});
@@ -883,20 +886,10 @@ export const useDeleteClaudeAgent = () => {
 			queryClient.invalidateQueries({ queryKey: ["plugin-agents"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to delete agent: ${errorMessage}`);
 		},
 	});
-};
-
-// Helper function to rebuild tray menu
-const rebuildTrayMenu = async () => {
-	try {
-		await invoke<void>("rebuild_tray_menu_command");
-	} catch (error) {
-		console.error("Failed to rebuild tray menu:", error);
-	}
 };
 
 // Plugin management types and hooks
@@ -998,8 +991,7 @@ export const useWriteClaudeSkill = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-skills"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to save skill: ${errorMessage}`);
 		},
 	});
@@ -1028,8 +1020,7 @@ export const useDeleteClaudeSkill = () => {
 			queryClient.invalidateQueries({ queryKey: ["claude-skills"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to delete skill: ${errorMessage}`);
 		},
 	});
@@ -1062,8 +1053,7 @@ export const useTogglePlugin = () => {
 			queryClient.invalidateQueries({ queryKey: ["mcp-servers-with-state"] });
 		},
 		onError: (error) => {
-			const errorMessage =
-				error instanceof Error ? error.message : String(error);
+			const errorMessage = getErrorMessage(error);
 			toast.error(`Failed to toggle plugin: ${errorMessage}`);
 		},
 	});

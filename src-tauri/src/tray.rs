@@ -11,9 +11,7 @@ use crate::commands::{get_store, get_stores, set_using_config};
 // Store the tray icon ID globally
 const TRAY_ID: &str = "main-tray";
 
-pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔧 Creating system tray icon...");
-
+fn load_tray_icon() -> Result<Image<'static>, Box<dyn std::error::Error>> {
     // Load the tray icon - use smaller icon for tray on macOS
     let icon_bytes: &[u8] = if cfg!(target_os = "macos") {
         println!("✓ Using tray-icon.png for macOS");
@@ -24,6 +22,13 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::er
 
     let icon = Image::from_bytes(icon_bytes)?;
     println!("✓ Icon loaded successfully");
+    Ok(icon)
+}
+
+pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🔧 Creating system tray icon...");
+
+    let icon = load_tray_icon()?;
 
     // Build the initial menu - use block_on here since we're not in async context yet
     let menu = tauri::async_runtime::block_on(build_tray_menu(app))?;
@@ -32,7 +37,7 @@ pub fn create_tray<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::er
     let tray_builder = TrayIconBuilder::with_id(TRAY_ID)
         .icon(icon)
         .menu(&menu)
-        .tooltip("CC Mate - Config Manager")
+        .tooltip("Claude Samurai - Config Manager")
         .show_menu_on_left_click(true); // Show menu on left click
 
     // On macOS, make it a template icon for better system integration
@@ -84,7 +89,6 @@ pub async fn build_tray_menu<R: Runtime>(
 ) -> Result<tauri::menu::Menu<R>, Box<dyn std::error::Error>> {
     println!("🔨 Building tray menu...");
 
-    // Get the stores asynchronously
     let stores_result = get_stores().await;
 
     let menu_builder = MenuBuilder::new(app);
@@ -94,7 +98,6 @@ pub async fn build_tray_menu<R: Runtime>(
             println!("✓ Found {} stores", stores.len());
 
             if stores.is_empty() {
-                // No configs available
                 let no_configs_item =
                     MenuItemBuilder::with_id("no_configs", "No configs available").build(app)?;
                 menu_builder
@@ -116,7 +119,13 @@ pub async fn build_tray_menu<R: Runtime>(
                 builder = builder.item(&separator);
 
                 // Add "Configs" label
-                let configs_label = tauri::menu::MenuItem::with_id(app, "configs_label", "Configs", false, None::<&str>)?;
+                let configs_label = tauri::menu::MenuItem::with_id(
+                    app,
+                    "configs_label",
+                    "Configs",
+                    false,
+                    None::<&str>,
+                )?;
                 builder = builder.item(&configs_label);
 
                 // Add config items
@@ -130,8 +139,9 @@ pub async fn build_tray_menu<R: Runtime>(
                         store.title
                     );
 
-                    let item = MenuItemBuilder::with_id(format!("config_{}", store.id), label)
-                        .build(app)?;
+                    let item =
+                        MenuItemBuilder::with_id(format!("config_{}", store.id), label)
+                            .build(app)?;
 
                     builder = builder.item(&item);
                 }
@@ -208,60 +218,56 @@ pub fn handle_tray_menu_event<R: Runtime>(app_handle: &AppHandle<R>, event_id: &
             true
         }
         id if id.starts_with("config_") => {
-            // Extract store ID from the menu item ID and convert to owned String
             let store_id = id.trim_start_matches("config_").to_string();
             let app_clone = app_handle.clone();
-
-            // Switch the config
             tauri::async_runtime::spawn(async move {
-                println!("🔄 Switching to config: {}", store_id);
-
-                match set_using_config(store_id.clone()).await {
-                    Ok(_) => {
-                        println!("✅ Config switched successfully: {}", store_id);
-
-                        // Small delay to ensure the file system has synced
-                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-                        // Rebuild the tray menu to update checkmarks
-                        println!("🔄 About to rebuild tray menu...");
-                        if let Err(e) = rebuild_tray_menu(app_clone.clone()).await {
-                            eprintln!("❌ Failed to rebuild tray menu: {}", e);
-                        } else {
-                            println!("✅ Tray menu updated with new checkmark");
-                        }
-
-                        // Get the store details to show the config name in notification
-                        let notification_body = match get_store(store_id.clone()).await {
-                            Ok(store) => {
-                                format!("Claude Code config switched to \"{}\"", store.title)
-                            }
-                            Err(_) => "Configuration has been switched successfully".to_string(),
-                        };
-
-                        // Show notification using the notification plugin
-                        let _ = app_clone
-                            .notification()
-                            .builder()
-                            .title("CC Mate")
-                            .body(&notification_body)
-                            .show();
-                    }
-                    Err(e) => {
-                        eprintln!("❌ Failed to switch config: {}", e);
-
-                        // Show error notification
-                        let _ = app_clone
-                            .notification()
-                            .builder()
-                            .title("CC Mate")
-                            .body(&format!("Error: {}", e))
-                            .show();
-                    }
-                }
+                handle_config_switch(app_clone, store_id).await;
             });
             true
         }
         _ => false,
+    }
+}
+
+async fn handle_config_switch<R: Runtime>(app: AppHandle<R>, store_id: String) {
+    println!("🔄 Switching to config: {}", store_id);
+
+    match set_using_config(store_id.clone()).await {
+        Ok(_) => {
+            println!("✅ Config switched successfully: {}", store_id);
+
+            // Small delay to ensure the file system has synced
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            // Rebuild the tray menu to update checkmarks
+            println!("🔄 About to rebuild tray menu...");
+            if let Err(e) = rebuild_tray_menu(app.clone()).await {
+                eprintln!("❌ Failed to rebuild tray menu: {}", e);
+            } else {
+                println!("✅ Tray menu updated with new checkmark");
+            }
+
+            let notification_body = match get_store(store_id.clone()).await {
+                Ok(store) => format!("Claude Code config switched to \"{}\"", store.title),
+                Err(_) => "Configuration has been switched successfully".to_string(),
+            };
+
+            let _ = app
+                .notification()
+                .builder()
+                .title("Claude Samurai")
+                .body(&notification_body)
+                .show();
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to switch config: {}", e);
+
+            let _ = app
+                .notification()
+                .builder()
+                .title("Claude Samurai")
+                .body(&format!("Error: {}", e))
+                .show();
+        }
     }
 }

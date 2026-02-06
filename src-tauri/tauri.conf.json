@@ -1,6 +1,6 @@
 {
 	"$schema": "https://schema.tauri.app/config/2",
-	"productName": "CC Mate",
+	"productName": "Claude Samurai",
 	"version": "0.3.4",
 	"identifier": "org.randynamic.ccconfig",
 	"build": {
@@ -13,7 +13,7 @@
 		"macOSPrivateApi": true,
 		"windows": [
 			{
-				"title": "CC Mate",
+				"title": "Claude Samurai",
 				"width": 860,
 				"height": 660,
 				"minWidth": 860,

@@ -8,8 +8,8 @@ use nanoid;
 use crate::helper::{
     ensure_dir, extract_string_array, get_project_path_from_claude_json, home_dir,
     path_to_string, read_direct_servers, read_disabled_mcp_servers_from_claude_json,
-    read_json_file, read_json_file_mcp_servers, read_local_mcp_servers, read_mcpjson_servers,
-    read_project_mcp_servers, write_json_file, write_json_file_serialize,
+    read_json_file, read_local_mcp_servers, read_mcpjson_servers, read_project_mcp_servers,
+    write_json_file, write_json_file_serialize,
 };
 
 // Application configuration directory
@@ -133,6 +133,15 @@ pub struct NotificationSettings {
     pub enabled_hooks: Vec<String>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
+pub struct HooksConfigEntry {
+    pub source: String, // "project_local" | "project" | "user"
+    pub path: String,
+    pub exists: bool,
+    pub hooks: Option<Value>,
+    pub error: Option<String>,
+}
+
 #[tauri::command]
 pub async fn read_config_file(config_type: String) -> Result<ConfigFile, String> {
     let home_dir = home_dir()?;
@@ -236,6 +245,74 @@ pub async fn create_app_config_dir() -> Result<(), String> {
     ensure_dir(&app_config_path, "app config directory")?;
 
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_hooks_settings(_cwd: Option<String>) -> Result<Vec<HooksConfigEntry>, String> {
+    let home = home_dir()?;
+    let mut entries: Vec<HooksConfigEntry> = Vec::new();
+
+    // Helper to build one entry; only returns Some when file exists and has a hooks key
+    fn build_entry(source: &str, path: std::path::PathBuf) -> Option<HooksConfigEntry> {
+        let path_str = path_to_string(&path);
+        if !path.exists() {
+            return None;
+        }
+
+        match read_json_file(&path, "settings file") {
+            Ok(value) => {
+                let hooks = value.get("hooks").cloned();
+                if hooks.is_none() {
+                    return None;
+                }
+
+                Some(HooksConfigEntry {
+                    source: source.to_string(),
+                    path: path_str,
+                    exists: true,
+                    hooks,
+                    error: None,
+                })
+            }
+            Err(e) => Some(HooksConfigEntry {
+                source: source.to_string(),
+                path: path_str,
+                exists: true,
+                hooks: None,
+                error: Some(e),
+            }),
+        }
+    }
+
+    // Discover all known projects from ~/.claude.json and collect their hooks
+    let claude_json_path = home.join(".claude.json");
+    if claude_json_path.exists() {
+        let claude_value = read_json_file(&claude_json_path, ".claude.json")?;
+
+        if let Some(projects) = claude_value.get("projects").and_then(|p| p.as_object()) {
+            for (project_path_str, _) in projects {
+                let project_path = std::path::PathBuf::from(project_path_str);
+
+                let local_settings_path = project_path.join(".claude/settings.local.json");
+                if let Some(entry) = build_entry("project_local", local_settings_path) {
+                    entries.push(entry);
+                }
+
+                let project_settings_path = project_path.join(".claude/settings.json");
+                if let Some(entry) = build_entry("project", project_settings_path) {
+                    entries.push(entry);
+                }
+            }
+        }
+    }
+
+    // User/global settings (included if it has hooks)
+    let user_settings_path = home.join(".claude/settings.json");
+    if let Some(entry) = build_entry("user", user_settings_path) {
+        entries.push(entry);
+    }
+
+    Ok(entries)
 }
 
 fn backup_claude_configs_internal(
@@ -2219,7 +2296,7 @@ pub async fn track(event: String, properties: serde_json::Value, app: tauri::App
     // Send request to PostHog
     let client = reqwest::Client::new();
     let response = client
-        .post("https://us.i.posthog.com/capture/")
+        .post("https://us.i.posthog.comxxxx/capture/")
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
@@ -3523,45 +3600,59 @@ pub async fn toggle_plugin(
     plugin_name: String,
     enabled: bool,
     scope: String,
-    project_path: Option<String>
+    project_path: Option<String>,
 ) -> Result<(), String> {
     let home_dir = home_dir()?;
-    
-    // Determine settings file based on scope
-    let settings_path = if scope == "local" {
-        if let Some(proj_path) = project_path {
-            std::path::PathBuf::from(proj_path).join(".claude/settings.local.json")
-        } else {
-            return Err("Project path required for local scope".to_string());
-        }
-    } else {
-        home_dir.join(".claude/settings.json")
-    };
-    
-    // Ensure directory exists
+
+    let settings_path =
+        plugin_settings_path(&home_dir, &scope, project_path.as_ref()).map_err(|e| e)?;
+
     if let Some(parent) = settings_path.parent() {
         if !parent.exists() {
             ensure_dir(parent, "directory")?;
         }
     }
-    
-    // Read or create settings
+
     let mut settings = read_json_file(&settings_path, "settings")?;
 
-    // Update enabledPlugins
-    let settings_obj = settings.as_object_mut()
-        .ok_or("Settings is not an object")?;
-    
+    update_enabled_plugins(&mut settings, plugin_name, enabled)?;
+
+    write_json_file(&settings_path, &settings, "settings")?;
+    Ok(())
+}
+
+fn plugin_settings_path(
+    home_dir: &std::path::Path,
+    scope: &str,
+    project_path: Option<&String>,
+) -> Result<std::path::PathBuf, String> {
+    if scope == "local" {
+        if let Some(proj_path) = project_path {
+            Ok(std::path::PathBuf::from(proj_path).join(".claude/settings.local.json"))
+        } else {
+            Err("Project path required for local scope".to_string())
+        }
+    } else {
+        Ok(home_dir.join(".claude/settings.json"))
+    }
+}
+
+fn update_enabled_plugins(
+    settings: &mut serde_json::Value,
+    plugin_name: String,
+    enabled: bool,
+) -> Result<(), String> {
+    let settings_obj = settings
+        .as_object_mut()
+        .ok_or_else(|| "Settings is not an object".to_string())?;
+
     let enabled_plugins = settings_obj
         .entry("enabledPlugins".to_string())
         .or_insert_with(|| Value::Object(serde_json::Map::new()))
         .as_object_mut()
-        .ok_or("enabledPlugins is not an object")?;
-    
+        .ok_or_else(|| "enabledPlugins is not an object".to_string())?;
+
     enabled_plugins.insert(plugin_name, Value::Bool(enabled));
-    
-    // Write back
-    write_json_file(&settings_path, &settings, "settings")?;
     Ok(())
 }
 
@@ -3586,9 +3677,11 @@ pub async fn read_plugin_commands() -> Result<Vec<PluginCommandFile>, String> {
     
     for (plugin_name, installs) in installed.plugins {
         for install in installs {
-            let enabled = if let Some(path) =
-                enabled_plugins_settings_path(&home_dir, &install.scope, install.project_path.as_ref())
-            {
+            let enabled = if let Some(path) = enabled_plugins_settings_path(
+                &home_dir,
+                &install.scope,
+                install.project_path.as_ref(),
+            ) {
                 let map = enabled_cache
                     .entry(path.clone())
                     .or_insert_with(|| read_enabled_plugins(&path).unwrap_or_default());
@@ -3607,14 +3700,12 @@ pub async fn read_plugin_commands() -> Result<Vec<PluginCommandFile>, String> {
                 continue;
             }
             
-            // Walk the commands directory
             let commands_dir = std::path::Path::new(&install.install_path).join("commands");
             
             if !commands_dir.exists() || !commands_dir.is_dir() {
                 continue;
             }
             
-            // Read all .md and .md.disabled files in the commands directory
             let entries = std::fs::read_dir(&commands_dir)
                 .map_err(|e| format!("Failed to read commands directory: {}", e))?;
             
@@ -3623,39 +3714,10 @@ pub async fn read_plugin_commands() -> Result<Vec<PluginCommandFile>, String> {
                 let path = entry.path();
                 
                 if path.is_file() {
-                    let file_name_str = path.file_name()
-                        .and_then(|name| name.to_str())
-                        .unwrap_or("");
-                    
-                    // Check if it's a .md or .md.disabled file
-                    let (is_command_file, is_disabled) = if file_name_str.ends_with(".md.disabled") {
-                        (true, true)
-                    } else if file_name_str.ends_with(".md") {
-                        (true, false)
-                    } else {
-                        (false, false)
-                    };
-                    
-                    if is_command_file {
-                        // Extract the command name (without .md or .md.disabled)
-                        let command_name = if is_disabled {
-                            file_name_str.trim_end_matches(".md.disabled").to_string()
-                        } else {
-                            file_name_str.trim_end_matches(".md").to_string()
-                        };
-                        
-                        let content = std::fs::read_to_string(&path)
-                            .map_err(|e| format!("Failed to read command file {}: {}", path.display(), e))?;
-                        
-                        result.push(PluginCommandFile {
-                            name: command_name,
-                            content,
-                            exists: true,
-                            disabled: is_disabled,
-                            plugin_name: plugin_name.clone(),
-                            plugin_scope: install.scope.clone(),
-                            source_path: path_to_string(&path),
-                        });
+                    if let Some(command_file) =
+                        read_command_file(&path, &plugin_name, &install.scope)?
+                    {
+                        result.push(command_file);
                     }
                 }
             }
@@ -3666,4 +3728,46 @@ pub async fn read_plugin_commands() -> Result<Vec<PluginCommandFile>, String> {
     result.sort_by(|a, b| a.name.cmp(&b.name));
     
     Ok(result)
+}
+
+fn read_command_file(
+    path: &std::path::Path,
+    plugin_name: &str,
+    scope: &str,
+) -> Result<Option<PluginCommandFile>, String> {
+    let file_name_str = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("");
+
+    let (is_command_file, is_disabled) = if file_name_str.ends_with(".md.disabled") {
+        (true, true)
+    } else if file_name_str.ends_with(".md") {
+        (true, false)
+    } else {
+        (false, false)
+    };
+
+    if !is_command_file {
+        return Ok(None);
+    }
+
+    let command_name = if is_disabled {
+        file_name_str.trim_end_matches(".md.disabled").to_string()
+    } else {
+        file_name_str.trim_end_matches(".md").to_string()
+    };
+
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read command file {}: {}", path.display(), e))?;
+
+    Ok(Some(PluginCommandFile {
+        name: command_name,
+        content,
+        exists: true,
+        disabled: is_disabled,
+        plugin_name: plugin_name.to_string(),
+        plugin_scope: scope.to_string(),
+        source_path: path_to_string(path),
+    }))
 }

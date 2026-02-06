@@ -1,3 +1,4 @@
+import type React from "react";
 import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RouteWrapper } from "./components/RouteWrapper";
@@ -5,6 +6,7 @@ import { AgentsPage } from "./pages/AgentsPage";
 import { CommandsPage } from "./pages/CommandsPage";
 import { ConfigEditorPage } from "./pages/ConfigEditorPage";
 import { ConfigSwitcherPage } from "./pages/ConfigSwitcherPage";
+import { HooksPage } from "./pages/HooksPage";
 import { MCPPage } from "./pages/MCPPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { SkillsPage } from "./pages/SkillsPage";
@@ -16,126 +18,74 @@ import { List } from "./pages/projects/List";
 import { SettingsPage } from "./pages/SettingsPage";
 import { UsagePage } from "./pages/UsagePage";
 
+function wrapRoute(element: React.ReactNode): React.ReactNode {
+	return <RouteWrapper>{element}</RouteWrapper>;
+}
+
 const router = createBrowserRouter([
 	{
 		path: "/",
-		element: (
-			<RouteWrapper>
-				<Layout />
-			</RouteWrapper>
-		),
+		element: wrapRoute(<Layout />),
 		children: [
 			{
 				index: true,
-				element: (
-					<RouteWrapper>
-						<ConfigSwitcherPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<ConfigSwitcherPage />),
 			},
 			{
 				path: "edit/:storeId",
-				element: (
-					<RouteWrapper>
-						<ConfigEditorPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<ConfigEditorPage />),
 			},
 			{
 				path: "settings",
-				element: (
-					<RouteWrapper>
-						<SettingsPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<SettingsPage />),
 			},
 			{
 				path: "mcp",
-				element: (
-					<RouteWrapper>
-						<MCPPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<MCPPage />),
+			},
+			{
+				path: "hooks",
+				element: wrapRoute(<HooksPage />),
 			},
 			{
 				path: "agents",
-				element: (
-					<RouteWrapper>
-						<AgentsPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<AgentsPage />),
 			},
 			{
 				path: "usage",
-				element: (
-					<RouteWrapper>
-						<UsagePage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<UsagePage />),
 			},
 			{
 				path: "memory",
-				element: (
-					<RouteWrapper>
-						<MemoryPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<MemoryPage />),
 			},
 			{
 				path: "notification",
-				element: (
-					<RouteWrapper>
-						<NotificationPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<NotificationPage />),
 			},
 			{
 				path: "commands",
-				element: (
-					<RouteWrapper>
-						<CommandsPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<CommandsPage />),
 			},
 			{
 				path: "skills",
-				element: (
-					<RouteWrapper>
-						<SkillsPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<SkillsPage />),
 			},
 			{
 				path: "plugins",
-				element: (
-					<RouteWrapper>
-						<PluginsPage />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<PluginsPage />),
 			},
 			{
 				path: "projects",
-				element: (
-					<RouteWrapper>
-						<ProjectsLayout />
-					</RouteWrapper>
-				),
+				element: wrapRoute(<ProjectsLayout />),
 				children: [
 					{
 						index: true,
-						element: (
-							<RouteWrapper>
-								<List />
-							</RouteWrapper>
-						),
+						element: wrapRoute(<List />),
 					},
 					{
 						path: ":path",
-						element: (
-							<RouteWrapper>
-								<Detail />
-							</RouteWrapper>
-						),
+						element: wrapRoute(<Detail />),
 					},
 				],
 			},

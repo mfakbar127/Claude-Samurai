@@ -11,12 +11,31 @@ import {
 	SparklesIcon,
 	TerminalIcon,
 } from "lucide-react";
-import type React from "react";
+import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { cn, isMacOS } from "../lib/utils";
 import { UpdateButton } from "./UpdateButton";
 import { ScrollArea } from "./ui/scroll-area";
+
+const macosDragRegionStyle = {
+	WebkitUserSelect: "none",
+	WebkitAppRegion: "drag",
+} as CSSProperties;
+
+function MacosDragRegionSpacer(props: { className: string }) {
+	if (!isMacOS) {
+		return null;
+	}
+
+	return (
+		<div
+			data-tauri-drag-region
+			className={props.className}
+			style={macosDragRegionStyle}
+		/>
+	);
+}
 
 export function Layout() {
 	const { t } = useTranslation();
@@ -38,6 +57,11 @@ export function Layout() {
 			to: "/mcp",
 			icon: CpuIcon,
 			label: t("navigation.mcp"),
+		},
+		{
+			to: "/hooks",
+			icon: CpuIcon,
+			label: t("hooks.title"),
 		},
 		{
 			to: "/agents",
@@ -84,36 +108,14 @@ export function Layout() {
 	return (
 		<div className="min-h-screen bg-background flex flex-col">
 			{/* Custom Title Bar - Draggable Region with traffic lights space (macOS only) */}
-			{isMacOS && (
-				<div
-					data-tauri-drag-region
-					className=""
-					style={
-						{
-							WebkitUserSelect: "none",
-							WebkitAppRegion: "drag",
-						} as React.CSSProperties
-					}
-				></div>
-			)}
+			<MacosDragRegionSpacer className="" />
 
 			<div className="flex flex-1 overflow-hidden ">
 				<nav
 					className="w-[200px] bg-background border-r flex flex-col"
 					data-tauri-drag-region
 				>
-					{isMacOS && (
-						<div
-							data-tauri-drag-region
-							className="h-10"
-							style={
-								{
-									WebkitUserSelect: "none",
-									WebkitAppRegion: "drag",
-								} as React.CSSProperties
-							}
-						></div>
-					)}
+					<MacosDragRegionSpacer className="h-10" />
 					<div
 						className="flex flex-col flex-1 justify-between"
 						data-tauri-drag-region

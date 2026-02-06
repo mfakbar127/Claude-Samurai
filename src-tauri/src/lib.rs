@@ -6,6 +6,156 @@ mod hook_server;
 use commands::*;
 use hook_server::start_hook_server;
 
+fn configure_macos_window<R: tauri::Runtime>(app: &tauri::App<R>) {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::Manager;
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
+        }
+    }
+}
+
+fn build_app_menu<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    use tauri::menu::{MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+
+    let app_name = app.package_info().name.clone();
+    let separator = PredefinedMenuItem::separator(app)?;
+
+    SubmenuBuilder::new(app, &app_name)
+        .item(&PredefinedMenuItem::about(app, Some(&app_name), None)?)
+        .item(&separator)
+        .item(&PredefinedMenuItem::services(app, None)?)
+        .item(&separator)
+        .item(&PredefinedMenuItem::hide(app, None)?)
+        .item(&PredefinedMenuItem::hide_others(app, None)?)
+        .item(&PredefinedMenuItem::show_all(app, None)?)
+        .item(&separator)
+        .item(
+            &MenuItemBuilder::with_id("quit", format!("Quit {}", app_name))
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?,
+        )
+        .build()
+}
+
+fn build_file_menu<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+    open_config_item: &tauri::menu::MenuItem<R>,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    use tauri::menu::{PredefinedMenuItem, SubmenuBuilder};
+
+    let separator = PredefinedMenuItem::separator(app)?;
+
+    SubmenuBuilder::new(app, "File")
+        .item(open_config_item)
+        .item(&separator)
+        .item(&PredefinedMenuItem::close_window(app, None)?)
+        .build()
+}
+
+fn build_edit_menu<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    use tauri::menu::{PredefinedMenuItem, SubmenuBuilder};
+
+    let separator = PredefinedMenuItem::separator(app)?;
+
+    SubmenuBuilder::new(app, "Edit")
+        .item(&PredefinedMenuItem::undo(app, None)?)
+        .item(&PredefinedMenuItem::redo(app, None)?)
+        .item(&separator)
+        .item(&PredefinedMenuItem::cut(app, None)?)
+        .item(&PredefinedMenuItem::copy(app, None)?)
+        .item(&PredefinedMenuItem::paste(app, None)?)
+        .item(&separator)
+        .item(&PredefinedMenuItem::select_all(app, None)?)
+        .build()
+}
+
+fn build_window_menu<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+    minimize_item: &tauri::menu::MenuItem<R>,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    use tauri::menu::{PredefinedMenuItem, SubmenuBuilder};
+
+    let separator = PredefinedMenuItem::separator(app)?;
+
+    SubmenuBuilder::new(app, "Window")
+        .item(minimize_item)
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&separator)
+        .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .build()
+}
+
+fn build_help_menu<R: tauri::Runtime>(
+    app: &tauri::App<R>,
+) -> tauri::Result<tauri::menu::Submenu<R>> {
+    use tauri::menu::SubmenuBuilder;
+
+    SubmenuBuilder::new(app, "Help").build()
+}
+
+fn spawn_initialize_app_config_task() {
+    println!("Setting up app...");
+    tauri::async_runtime::spawn(async move {
+        println!("Initializing app config...");
+        match commands::initialize_app_config().await {
+            Ok(()) => println!("App config initialized successfully"),
+            Err(e) => eprintln!("Failed to initialize app config: {}", e),
+        }
+    });
+}
+
+fn spawn_update_claude_hooks_task() {
+    tauri::async_runtime::spawn(async move {
+        println!("Updating Claude Code hooks to latest version...");
+        match commands::update_claude_code_hook().await {
+            Ok(()) => println!("✅ Claude Code hooks updated/checked successfully"),
+            Err(e) => eprintln!("Failed to update Claude Code hooks: {}", e),
+        }
+    });
+}
+
+fn spawn_hook_server_task(app_handle: tauri::AppHandle) {
+    println!("Starting hook server...");
+    tauri::async_runtime::spawn(async move {
+        match start_hook_server(app_handle).await {
+            Ok(()) => println!("Hook server started successfully"),
+            Err(e) => eprintln!("Failed to start hook server: {}", e),
+        }
+    });
+}
+
+fn handle_app_menu_event<R: tauri::Runtime>(
+    app_handle: &tauri::AppHandle<R>,
+    event_id: &str,
+) {
+    use tauri::Manager;
+
+    match event_id {
+        "open_config_path" => {
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = commands::open_config_path().await {
+                    eprintln!("Failed to open config path: {}", e);
+                }
+            });
+        }
+        "minimize_window" => {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                let _ = window.hide();
+            }
+        }
+        "quit" => {
+            app_handle.exit(0);
+        }
+        _ => {}
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -17,18 +167,10 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_os::init())
         .setup(|app| {
-            // Configure window for macOS
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    // Set the window to have a transparent title bar
-                    let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
-                }
-            }
+            configure_macos_window(app);
 
             // Create application menu
-            use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
+            use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
             let open_config_item = MenuItemBuilder::with_id("open_config_path", "Open config path")
                 .accelerator("CmdOrCtrl+Shift+O")
@@ -39,55 +181,11 @@ pub fn run() {
                 .accelerator("Cmd+W")
                 .build(app)?;
 
-            let separator = PredefinedMenuItem::separator(app)?;
-
-            // App menu (macOS)
-            let app_name = app.package_info().name.clone();
-            let app_menu = SubmenuBuilder::new(app, &app_name)
-                .item(&PredefinedMenuItem::about(app, Some(&app_name), None)?)
-                .item(&separator)
-                .item(&PredefinedMenuItem::services(app, None)?)
-                .item(&separator)
-                .item(&PredefinedMenuItem::hide(app, None)?)
-                .item(&PredefinedMenuItem::hide_others(app, None)?)
-                .item(&PredefinedMenuItem::show_all(app, None)?)
-                .item(&separator)
-                .item(
-                    &MenuItemBuilder::with_id("quit", format!("Quit {}", app_name))
-                        .accelerator("CmdOrCtrl+Q")
-                        .build(app)?,
-                )
-                .build()?;
-
-            // File menu
-            let file_menu = SubmenuBuilder::new(app, "File")
-                .item(&open_config_item)
-                .item(&separator)
-                .item(&PredefinedMenuItem::close_window(app, None)?)
-                .build()?;
-
-            // Edit menu
-            let edit_menu = SubmenuBuilder::new(app, "Edit")
-                .item(&PredefinedMenuItem::undo(app, None)?)
-                .item(&PredefinedMenuItem::redo(app, None)?)
-                .item(&separator)
-                .item(&PredefinedMenuItem::cut(app, None)?)
-                .item(&PredefinedMenuItem::copy(app, None)?)
-                .item(&PredefinedMenuItem::paste(app, None)?)
-                .item(&separator)
-                .item(&PredefinedMenuItem::select_all(app, None)?)
-                .build()?;
-
-            // Window menu
-            let window_menu = SubmenuBuilder::new(app, "Window")
-                .item(&minimize_item)
-                .item(&PredefinedMenuItem::minimize(app, None)?)
-                .item(&separator)
-                .item(&PredefinedMenuItem::fullscreen(app, None)?)
-                .build()?;
-
-            // Help menu
-            let help_menu = SubmenuBuilder::new(app, "Help").build()?;
+            let app_menu = build_app_menu(app)?;
+            let file_menu = build_file_menu(app, &open_config_item)?;
+            let edit_menu = build_edit_menu(app)?;
+            let window_menu = build_window_menu(app, &minimize_item)?;
+            let help_menu = build_help_menu(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&app_menu)
@@ -106,63 +204,19 @@ pub fn run() {
 
             // Handle menu events (both app menu and tray menu)
             app.on_menu_event(|app_handle, event| {
-                use tauri::Manager;
                 let event_id = event.id().0.as_str();
-                
+
                 // Try to handle as tray menu event first
                 if tray::handle_tray_menu_event(&app_handle, event_id) {
                     return;
                 }
-                
-                // Handle app menu events
-                match event_id {
-                    "open_config_path" => {
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(e) = commands::open_config_path().await {
-                                eprintln!("Failed to open config path: {}", e);
-                            }
-                        });
-                    }
-                    "minimize_window" => {
-                        if let Some(window) = app_handle.get_webview_window("main") {
-                            let _ = window.hide();
-                        }
-                    }
-                    "quit" => {
-                        app_handle.exit(0);
-                    }
-                    _ => {}
-                }
+
+                handle_app_menu_event(&app_handle, event_id);
             });
 
-            // Initialize app config on startup
-            println!("Setting up app...");
-            tauri::async_runtime::spawn(async move {
-                println!("Initializing app config...");
-                match commands::initialize_app_config().await {
-                    Ok(()) => println!("App config initialized successfully"),
-                    Err(e) => eprintln!("Failed to initialize app config: {}", e),
-                }
-            });
-
-            // Always update hooks to ensure they have the latest command settings
-            tauri::async_runtime::spawn(async move {
-                println!("Updating Claude Code hooks to latest version...");
-                match commands::update_claude_code_hook().await {
-                    Ok(()) => println!("✅ Claude Code hooks updated/checked successfully"),
-                    Err(e) => eprintln!("Failed to update Claude Code hooks: {}", e),
-                }
-            });
-
-            // Start hook server in background
-            println!("Starting hook server...");
-            let app_handle_for_server = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                match start_hook_server(app_handle_for_server).await {
-                    Ok(()) => println!("Hook server started successfully"),
-                    Err(e) => eprintln!("Failed to start hook server: {}", e),
-                }
-            });
+            spawn_initialize_app_config_task();
+            spawn_update_claude_hooks_task();
+            spawn_hook_server_task(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -224,7 +278,8 @@ pub fn run() {
             list_claude_skills,
             toggle_claude_skill,
             write_claude_skill,
-            delete_claude_skill
+            delete_claude_skill,
+            get_hooks_settings
         ])
         .on_window_event(|window, event| {
             #[cfg(target_os = "macos")]
