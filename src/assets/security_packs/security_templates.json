@@ -1,206 +1,560 @@
 {
   "agents": [
     {
-      "id": "appsec-review",
-      "title": "AppSec Review Agent",
-      "description": "Reviews diffs and PRs for common application security issues.",
-      "sourcePath": "agents/appsec-review.md"
+      "id": "ad-security-reviewer",
+      "title": "AD Security Reviewer Agent",
+      "description": "Audits Active Directory security posture, evaluates privilege escalation risks, and assesses authentication protocol hardening.",
+      "sourcePath": "agents/ad-security-reviewer.md"
     },
     {
-      "id": "secrets-scan",
-      "title": "Secrets Scan Agent",
-      "description": "Scans code and config for hard-coded secrets and credentials.",
-      "sourcePath": "agents/secrets-scan.md"
+      "id": "backend-security-coder",
+      "title": "Backend Security Coder Agent",
+      "description": "Expert in secure backend coding practices specializing in input validation, authentication, and API security.",
+      "sourcePath": "agents/backend-security-coder.md"
     },
     {
-      "id": "dependency-audit",
-      "title": "Dependency Audit Agent",
-      "description": "Reviews dependency manifests and lockfiles for vulnerable packages.",
-      "sourcePath": "agents/dependency-audit.md"
+      "id": "compliance-auditor",
+      "title": "Compliance Auditor Agent",
+      "description": "Achieves regulatory compliance and implements compliance controls across frameworks like GDPR, HIPAA, PCI DSS, SOC 2, and ISO standards.",
+      "sourcePath": "agents/compliance-auditor.md"
     },
     {
-      "id": "api-hardening",
-      "title": "API Hardening Agent",
-      "description": "Assists with reviewing and hardening API endpoints and schemas.",
-      "sourcePath": "agents/api-hardening.md"
+      "id": "devops-incident-responder",
+      "title": "DevOps Incident Responder Agent",
+      "description": "Responds to production incidents, diagnoses critical service failures, and conducts incident postmortems.",
+      "sourcePath": "agents/devops-incident-responder.md"
     },
     {
-      "id": "ci-security-guard",
-      "title": "CI Security Guard Agent",
-      "description": "Reviews CI pipelines for insecure patterns and missing checks.",
-      "sourcePath": "agents/ci-security-guard.md"
+      "id": "frontend-security-coder",
+      "title": "Frontend Security Coder Agent",
+      "description": "Expert in secure frontend coding practices specializing in XSS prevention, output sanitization, and client-side security patterns.",
+      "sourcePath": "agents/frontend-security-coder.md"
     },
     {
-      "id": "infra-drift-detect",
-      "title": "Infra Drift Detector Agent",
-      "description": "Helps detect and explain infrastructure drift from IaC baselines.",
-      "sourcePath": "agents/infra-drift-detect.md"
+      "id": "incident-responder",
+      "title": "Incident Responder Agent",
+      "description": "Manages active security breaches, service outages, or operational incidents requiring immediate response and evidence preservation.",
+      "sourcePath": "agents/incident-responder.md"
     },
     {
-      "id": "log-anomaly-hunter",
-      "title": "Log Anomaly Hunter Agent",
-      "description": "Guides log triage to find suspicious or anomalous events.",
-      "sourcePath": "agents/log-anomaly-hunter.md"
+      "id": "malware-analyst",
+      "title": "Malware Analyst Agent",
+      "description": "Expert malware analyst specializing in defensive malware research, threat intelligence, and incident response.",
+      "sourcePath": "agents/malware-analyst.md"
     },
     {
-      "id": "compliance-checker",
-      "title": "Compliance Checker Agent",
-      "description": "Reviews artifacts against basic compliance checklists (e.g. SOC2-style).",
-      "sourcePath": "agents/compliance-checker.md"
+      "id": "mobile-security-coder",
+      "title": "Mobile Security Coder Agent",
+      "description": "Expert in secure mobile coding practices specializing in input validation, WebView security, and mobile-specific security patterns.",
+      "sourcePath": "agents/mobile-security-coder.md"
     },
     {
-      "id": "phishing-sim",
-      "title": "Phishing Simulation Agent",
-      "description": "Helps design and analyze phishing simulation campaigns.",
-      "sourcePath": "agents/phishing-sim.md"
+      "id": "penetration-tester",
+      "title": "Penetration Tester Agent",
+      "description": "Conducts authorized security penetration tests to identify real vulnerabilities through active exploitation and validation.",
+      "sourcePath": "agents/penetration-tester.md"
     },
     {
-      "id": "vuln-triage-assistant",
-      "title": "Vulnerability Triage Assistant",
-      "description": "Assists in triaging vulnerability reports and prioritizing fixes.",
-      "sourcePath": "agents/vuln-triage-assistant.md"
+      "id": "powershell-security-hardening",
+      "title": "PowerShell Security Hardening Agent",
+      "description": "Hardens PowerShell automation, secures remoting configuration, and enforces least-privilege design.",
+      "sourcePath": "agents/powershell-security-hardening.md"
     },
     {
-      "id": "threat-modeling-coach",
-      "title": "Threat Modeling Coach Agent",
-      "description": "Guides developers through lightweight threat modeling exercises.",
-      "sourcePath": "agents/threat-modeling-coach.md"
+      "id": "risk-manager",
+      "title": "Risk Manager Agent",
+      "description": "Identifies, quantifies, and mitigates enterprise-level risks across financial, operational, regulatory, and strategic domains.",
+      "sourcePath": "agents/risk-manager.md"
+    },
+    {
+      "id": "security-auditor",
+      "title": "Security Auditor Agent",
+      "description": "Conducts comprehensive security audits, compliance assessments, and risk evaluations across systems and infrastructure.",
+      "sourcePath": "agents/security-auditor.md"
+    },
+    {
+      "id": "security-engineer",
+      "title": "Security Engineer Agent",
+      "description": "Implements comprehensive security solutions, builds automated security controls, and establishes compliance programs.",
+      "sourcePath": "agents/security-engineer.md"
+    },
+    {
+      "id": "threat-modeling-expert",
+      "title": "Threat Modeling Expert Agent",
+      "description": "Expert in threat modeling methodologies, security architecture review, and risk assessment.",
+      "sourcePath": "agents/threat-modeling-expert.md"
     }
   ],
   "skills": [
     {
-      "id": "threat-intel-enricher",
-      "title": "Threat Intel Enricher",
-      "description": "Enriches security alerts with external threat intelligence feeds.",
-      "sourcePath": "skills/threat-intel-enricher/SKILL.md"
+      "id": "active-directory-attacks",
+      "title": "Active Directory Attacks",
+      "description": "This skill should be used when the user asks to \"attack Active Directory\", \"exploit AD\", \"Kerberoasting\", \"DCSync\", \"pass-the-hash\", \"BloodHound enumeration\", \"Golden Ticket\", \"Silver Ticket\", \"AS-...",
+      "sourcePath": "skills/active-directory-attacks/SKILL.md"
     },
     {
-      "id": "sast-helper",
-      "title": "SAST Helper Skill",
-      "description": "Interprets static analysis results and suggests code fixes.",
-      "sourcePath": "skills/sast-helper/SKILL.md"
+      "id": "anti-reversing-techniques",
+      "title": "anti-reversing-techniques",
+      "description": "Understand anti-reversing, obfuscation, and protection techniques encountered during software analysis. Use when analyzing protected binaries, bypassing anti-debugging for authorized analysis, or u...",
+      "sourcePath": "skills/anti-reversing-techniques/SKILL.md"
     },
     {
-      "id": "dast-helper",
-      "title": "DAST Helper Skill",
-      "description": "Explains dynamic scan findings and how to reproduce them safely.",
-      "sourcePath": "skills/dast-helper/SKILL.md"
+      "id": "api-fuzzing-bug-bounty",
+      "title": "API Fuzzing for Bug Bounty",
+      "description": "This skill should be used when the user asks to \"test API security\", \"fuzz APIs\", \"find IDOR vulnerabilities\", \"test REST API\", \"test GraphQL\", \"API penetration testing\", \"bug bounty API testing\", ...",
+      "sourcePath": "skills/api-fuzzing-bug-bounty/SKILL.md"
     },
     {
-      "id": "compliance-writer",
-      "title": "Compliance Writer Skill",
-      "description": "Drafts security policy and compliance documentation from templates.",
-      "sourcePath": "skills/compliance-writer/SKILL.md"
+      "id": "api-security-best-practices",
+      "title": "api-security-best-practices",
+      "description": "Implement secure API design patterns including authentication, authorization, input validation, rate limiting, and protection against common API vulnerabilities",
+      "sourcePath": "skills/api-security-best-practices/SKILL.md"
     },
     {
-      "id": "incident-timeline-builder",
-      "title": "Incident Timeline Builder Skill",
-      "description": "Helps construct clear timelines from fragmented incident data.",
-      "sourcePath": "skills/incident-timeline-builder/SKILL.md"
+      "id": "attack-tree-construction",
+      "title": "attack-tree-construction",
+      "description": "Build comprehensive attack trees to visualize threat paths. Use when mapping attack scenarios, identifying defense gaps, or communicating security risks to stakeholders.",
+      "sourcePath": "skills/attack-tree-construction/SKILL.md"
     },
     {
-      "id": "cloud-config-auditor",
-      "title": "Cloud Config Auditor Skill",
-      "description": "Reviews cloud configuration snippets for common misconfigurations.",
-      "sourcePath": "skills/cloud-config-auditor/SKILL.md"
+      "id": "auth-implementation-patterns",
+      "title": "auth-implementation-patterns",
+      "description": "Master authentication and authorization patterns including JWT, OAuth2, session management, and RBAC to build secure, scalable access control systems. Use when implementing auth systems, securing A...",
+      "sourcePath": "skills/auth-implementation-patterns/SKILL.md"
     },
     {
-      "id": "k8s-security-auditor",
-      "title": "Kubernetes Security Auditor Skill",
-      "description": "Analyzes Kubernetes manifests for insecure settings.",
-      "sourcePath": "skills/k8s-security-auditor/SKILL.md"
+      "id": "aws-penetration-testing",
+      "title": "AWS Penetration Testing",
+      "description": "This skill should be used when the user asks to \"pentest AWS\", \"test AWS security\", \"enumerate IAM\", \"exploit cloud infrastructure\", \"AWS privilege escalation\", \"S3 bucket testing\", \"metadata SSRF\"...",
+      "sourcePath": "skills/aws-penetration-testing/SKILL.md"
     },
     {
-      "id": "rbac-analyzer",
-      "title": "RBAC Analyzer Skill",
-      "description": "Helps analyze and simplify complex RBAC configurations.",
-      "sourcePath": "skills/rbac-analyzer/SKILL.md"
+      "id": "backend-security-coder",
+      "title": "backend-security-coder",
+      "description": "Expert in secure backend coding practices specializing in input",
+      "sourcePath": "skills/backend-security-coder/SKILL.md"
     },
     {
-      "id": "seclog-parser",
-      "title": "Security Log Parser Skill",
-      "description": "Parses and normalizes various security log formats.",
-      "sourcePath": "skills/seclog-parser/SKILL.md"
+      "id": "bash-defensive-patterns",
+      "title": "bash-defensive-patterns",
+      "description": "Master defensive Bash programming techniques for production-grade scripts. Use when writing robust shell scripts, CI/CD pipelines, or system utilities requiring fault tolerance and safety.",
+      "sourcePath": "skills/bash-defensive-patterns/SKILL.md"
     },
     {
-      "id": "risk-register-helper",
-      "title": "Risk Register Helper Skill",
-      "description": "Assists in drafting and updating entries in a risk register.",
-      "sourcePath": "skills/risk-register-helper/SKILL.md"
+      "id": "binary-analysis-patterns",
+      "title": "binary-analysis-patterns",
+      "description": "Master binary analysis patterns including disassembly, decompilation, control flow analysis, and code pattern recognition. Use when analyzing executables, understanding compiled code, or performing...",
+      "sourcePath": "skills/binary-analysis-patterns/SKILL.md"
     },
     {
-      "id": "redteam-automation",
-      "title": "Red Team Automation Skill",
-      "description": "Helps design repeatable red-team style test plans and workflows.",
-      "sourcePath": "skills/redteam-automation/SKILL.md"
+      "id": "broken-authentication",
+      "title": "Broken Authentication Testing",
+      "description": "This skill should be used when the user asks to \"test for broken authentication vulnerabilities\", \"assess session management security\", \"perform credential stuffing tests\", \"evaluate password polic...",
+      "sourcePath": "skills/broken-authentication/SKILL.md"
+    },
+    {
+      "id": "burp-suite-testing",
+      "title": "Burp Suite Web Application Testing",
+      "description": "This skill should be used when the user asks to \"intercept HTTP traffic\", \"modify web requests\", \"use Burp Suite for testing\", \"perform web vulnerability scanning\", \"test with Burp Repeater\", \"anal...",
+      "sourcePath": "skills/burp-suite-testing/SKILL.md"
+    },
+    {
+      "id": "cc-skill-security-review",
+      "title": "security-review",
+      "description": "Use this skill when adding authentication, handling user input, working with secrets, creating API endpoints, or implementing payment/sensitive features. Provides comprehensive security checklist a...",
+      "sourcePath": "skills/cc-skill-security-review/SKILL.md"
+    },
+    {
+      "id": "cloud-penetration-testing",
+      "title": "Cloud Penetration Testing",
+      "description": "This skill should be used when the user asks to \"perform cloud penetration testing\", \"assess Azure or AWS or GCP security\", \"enumerate cloud resources\", \"exploit cloud misconfigurations\", \"test O36...",
+      "sourcePath": "skills/cloud-penetration-testing/SKILL.md"
+    },
+    {
+      "id": "code-security",
+      "title": "code-security",
+      "description": "Security guidelines for writing secure code. Use when writing code, reviewing code for vulnerabilities, or asking about secure coding practices.",
+      "sourcePath": "skills/code-security/SKILL.md"
+    },
+    {
+      "id": "ethical-hacking-methodology",
+      "title": "Ethical Hacking Methodology",
+      "description": "This skill should be used when the user asks to \"learn ethical hacking\", \"understand penetration testing lifecycle\", \"perform reconnaissance\", \"conduct security scanning\", \"exploit vulnerabilities\"...",
+      "sourcePath": "skills/ethical-hacking-methodology/SKILL.md"
+    },
+    {
+      "id": "file-path-traversal",
+      "title": "File Path Traversal Testing",
+      "description": "This skill should be used when the user asks to \"test for directory traversal\", \"exploit path traversal vulnerabilities\", \"read arbitrary files through web applications\", \"find LFI vulnerabilities\"...",
+      "sourcePath": "skills/file-path-traversal/SKILL.md"
+    },
+    {
+      "id": "firmware-analyst",
+      "title": "firmware-analyst",
+      "description": "Expert firmware analyst specializing in embedded systems, IoT",
+      "sourcePath": "skills/firmware-analyst/SKILL.md"
+    },
+    {
+      "id": "frontend-mobile-security-xss-scan",
+      "title": "frontend-mobile-security-xss-scan",
+      "description": "You are a frontend security specialist focusing on Cross-Site Scripting (XSS) vulnerability detection and prevention. Analyze React, Vue, Angular, and vanilla JavaScript code to identify injection poi",
+      "sourcePath": "skills/frontend-mobile-security-xss-scan/SKILL.md"
+    },
+    {
+      "id": "frontend-security-coder",
+      "title": "frontend-security-coder",
+      "description": "Expert in secure frontend coding practices specializing in XSS",
+      "sourcePath": "skills/frontend-security-coder/SKILL.md"
+    },
+    {
+      "id": "gdpr-data-handling",
+      "title": "gdpr-data-handling",
+      "description": "Implement GDPR-compliant data handling with consent management, data subject rights, and privacy by design. Use when building systems that process EU personal data, implementing privacy controls, o...",
+      "sourcePath": "skills/gdpr-data-handling/SKILL.md"
+    },
+    {
+      "id": "html-injection-testing",
+      "title": "HTML Injection Testing",
+      "description": "This skill should be used when the user asks to \"test for HTML injection\", \"inject HTML into web pages\", \"perform HTML injection attacks\", \"deface web applications\", or \"test content injection vuln...",
+      "sourcePath": "skills/html-injection-testing/SKILL.md"
+    },
+    {
+      "id": "idor-testing",
+      "title": "IDOR Vulnerability Testing",
+      "description": "This skill should be used when the user asks to \"test for insecure direct object references,\" \"find IDOR vulnerabilities,\" \"exploit broken access control,\" \"enumerate user IDs or object references,...",
+      "sourcePath": "skills/idor-testing/SKILL.md"
+    },
+    {
+      "id": "incident-responder",
+      "title": "incident-responder",
+      "description": "Expert SRE incident responder specializing in rapid problem",
+      "sourcePath": "skills/incident-responder/SKILL.md"
+    },
+    {
+      "id": "incident-response-incident-response",
+      "title": "incident-response-incident-response",
+      "description": "Use when working with incident response incident response",
+      "sourcePath": "skills/incident-response-incident-response/SKILL.md"
+    },
+    {
+      "id": "incident-response-smart-fix",
+      "title": "incident-response-smart-fix",
+      "description": "[Extended thinking: This workflow implements a sophisticated debugging and resolution pipeline that leverages AI-assisted debugging tools and observability platforms to systematically diagnose and res",
+      "sourcePath": "skills/incident-response-smart-fix/SKILL.md"
+    },
+    {
+      "id": "incident-runbook-templates",
+      "title": "incident-runbook-templates",
+      "description": "Create structured incident response runbooks with step-by-step procedures, escalation paths, and recovery actions. Use when building runbooks, responding to incidents, or establishing incident resp...",
+      "sourcePath": "skills/incident-runbook-templates/SKILL.md"
+    },
+    {
+      "id": "k8s-security-policies",
+      "title": "k8s-security-policies",
+      "description": "Implement Kubernetes security policies including NetworkPolicy, PodSecurityPolicy, and RBAC for production-grade security. Use when securing Kubernetes clusters, implementing network isolation, or ...",
+      "sourcePath": "skills/k8s-security-policies/SKILL.md"
+    },
+    {
+      "id": "linux-privilege-escalation",
+      "title": "Linux Privilege Escalation",
+      "description": "This skill should be used when the user asks to \"escalate privileges on Linux\", \"find privesc vectors on Linux systems\", \"exploit sudo misconfigurations\", \"abuse SUID binaries\", \"exploit cron jobs ...",
+      "sourcePath": "skills/linux-privilege-escalation/SKILL.md"
+    },
+    {
+      "id": "llm-security",
+      "title": "llm-security",
+      "description": "Security guidelines for LLM applications based on OWASP Top 10 for LLM 2025. Use when building LLM apps, reviewing AI security, or implementing RAG systems.",
+      "sourcePath": "skills/llm-security/SKILL.md"
+    },
+    {
+      "id": "malware-analyst",
+      "title": "malware-analyst",
+      "description": "Expert malware analyst specializing in defensive malware research,",
+      "sourcePath": "skills/malware-analyst/SKILL.md"
+    },
+    {
+      "id": "memory-forensics",
+      "title": "memory-forensics",
+      "description": "Master memory forensics techniques including memory acquisition, process analysis, and artifact extraction using Volatility and related tools. Use when analyzing memory dumps, investigating inciden...",
+      "sourcePath": "skills/memory-forensics/SKILL.md"
+    },
+    {
+      "id": "memory-safety-patterns",
+      "title": "memory-safety-patterns",
+      "description": "Implement memory-safe programming with RAII, ownership, smart pointers, and resource management across Rust, C++, and C. Use when writing safe systems code, managing resources, or preventing memory...",
+      "sourcePath": "skills/memory-safety-patterns/SKILL.md"
+    },
+    {
+      "id": "metasploit-framework",
+      "title": "Metasploit Framework",
+      "description": "This skill should be used when the user asks to \"use Metasploit for penetration testing\", \"exploit vulnerabilities with msfconsole\", \"create payloads with msfvenom\", \"perform post-exploitation\", \"u...",
+      "sourcePath": "skills/metasploit-framework/SKILL.md"
+    },
+    {
+      "id": "mobile-security-coder",
+      "title": "mobile-security-coder",
+      "description": "Expert in secure mobile coding practices specializing in input",
+      "sourcePath": "skills/mobile-security-coder/SKILL.md"
+    },
+    {
+      "id": "mtls-configuration",
+      "title": "mtls-configuration",
+      "description": "Configure mutual TLS (mTLS) for zero-trust service-to-service communication. Use when implementing zero-trust networking, certificate management, or securing internal service communication.",
+      "sourcePath": "skills/mtls-configuration/SKILL.md"
+    },
+    {
+      "id": "oss-hunter",
+      "title": "oss-hunter",
+      "description": "Automatically hunt for high-impact OSS contribution opportunities in trending repositories.",
+      "sourcePath": "skills/oss-hunter/SKILL.md"
+    },
+    {
+      "id": "pci-compliance",
+      "title": "pci-compliance",
+      "description": "Implement PCI DSS compliance requirements for secure handling of payment card data and payment systems. Use when securing payment processing, achieving PCI compliance, or implementing payment card ...",
+      "sourcePath": "skills/pci-compliance/SKILL.md"
+    },
+    {
+      "id": "pentest-checklist",
+      "title": "Pentest Checklist",
+      "description": "This skill should be used when the user asks to \"plan a penetration test\", \"create a security assessment checklist\", \"prepare for penetration testing\", \"define pentest scope\", \"follow security test...",
+      "sourcePath": "skills/pentest-checklist/SKILL.md"
+    },
+    {
+      "id": "pentest-commands",
+      "title": "Pentest Commands",
+      "description": "This skill should be used when the user asks to \"run pentest commands\", \"scan with nmap\", \"use metasploit exploits\", \"crack passwords with hydra or john\", \"scan web vulnerabilities with nikto\", \"en...",
+      "sourcePath": "skills/pentest-commands/SKILL.md"
+    },
+    {
+      "id": "privilege-escalation-methods",
+      "title": "Privilege Escalation Methods",
+      "description": "This skill should be used when the user asks to \"escalate privileges\", \"get root access\", \"become administrator\", \"privesc techniques\", \"abuse sudo\", \"exploit SUID binaries\", \"Kerberoasting\", \"pass...",
+      "sourcePath": "skills/privilege-escalation-methods/SKILL.md"
+    },
+    {
+      "id": "protocol-reverse-engineering",
+      "title": "protocol-reverse-engineering",
+      "description": "Master network protocol reverse engineering including packet analysis, protocol dissection, and custom protocol documentation. Use when analyzing network traffic, understanding proprietary protocol...",
+      "sourcePath": "skills/protocol-reverse-engineering/SKILL.md"
+    },
+    {
+      "id": "red-team-tactics",
+      "title": "red-team-tactics",
+      "description": "Red team tactics principles based on MITRE ATT&CK. Attack phases, detection evasion, reporting.",
+      "sourcePath": "skills/red-team-tactics/SKILL.md"
+    },
+    {
+      "id": "red-team-tools",
+      "title": "Red Team Tools and Methodology",
+      "description": "This skill should be used when the user asks to \"follow red team methodology\", \"perform bug bounty hunting\", \"automate reconnaissance\", \"hunt for XSS vulnerabilities\", \"enumerate subdomains\", or ne...",
+      "sourcePath": "skills/red-team-tools/SKILL.md"
+    },
+    {
+      "id": "reverse-engineer",
+      "title": "reverse-engineer",
+      "description": "Expert reverse engineer specializing in binary analysis,",
+      "sourcePath": "skills/reverse-engineer/SKILL.md"
+    },
+    {
+      "id": "sast-configuration",
+      "title": "sast-configuration",
+      "description": "Configure Static Application Security Testing (SAST) tools for automated vulnerability detection in application code. Use when setting up security scanning, implementing DevSecOps practices, or aut...",
+      "sourcePath": "skills/sast-configuration/SKILL.md"
+    },
+    {
+      "id": "scanning-tools",
+      "title": "Security Scanning Tools",
+      "description": "This skill should be used when the user asks to \"perform vulnerability scanning\", \"scan networks for open ports\", \"assess web application security\", \"scan wireless networks\", \"detect malware\", \"che...",
+      "sourcePath": "skills/scanning-tools/SKILL.md"
+    },
+    {
+      "id": "secrets-management",
+      "title": "secrets-management",
+      "description": "Implement secure secrets management for CI/CD pipelines using Vault, AWS Secrets Manager, or native platform solutions. Use when handling sensitive credentials, rotating secrets, or securing CI/CD ...",
+      "sourcePath": "skills/secrets-management/SKILL.md"
+    },
+    {
+      "id": "security-auditor",
+      "title": "security-auditor",
+      "description": "Expert security auditor specializing in DevSecOps, comprehensive",
+      "sourcePath": "skills/security-auditor/SKILL.md"
+    },
+    {
+      "id": "security-bluebook-builder",
+      "title": "security-bluebook-builder",
+      "description": "Build security Blue Books for sensitive apps",
+      "sourcePath": "skills/security-bluebook-builder/SKILL.md"
+    },
+    {
+      "id": "security-compliance-compliance-check",
+      "title": "security-compliance-compliance-check",
+      "description": "You are a compliance expert specializing in regulatory requirements for software systems including GDPR, HIPAA, SOC2, PCI-DSS, and other industry standards. Perform compliance audits and provide im...",
+      "sourcePath": "skills/security-compliance-compliance-check/SKILL.md"
+    },
+    {
+      "id": "security-requirement-extraction",
+      "title": "security-requirement-extraction",
+      "description": "Derive security requirements from threat models and business context. Use when translating threats into actionable requirements, creating security user stories, or building security test cases.",
+      "sourcePath": "skills/security-requirement-extraction/SKILL.md"
+    },
+    {
+      "id": "security-scanning-security-dependencies",
+      "title": "security-scanning-security-dependencies",
+      "description": "You are a security expert specializing in dependency vulnerability analysis, SBOM generation, and supply chain security. Scan project dependencies across ecosystems to identify vulnerabilities, ass...",
+      "sourcePath": "skills/security-scanning-security-dependencies/SKILL.md"
+    },
+    {
+      "id": "security-scanning-security-hardening",
+      "title": "security-scanning-security-hardening",
+      "description": "Coordinate multi-layer security scanning and hardening across application, infrastructure, and compliance controls.",
+      "sourcePath": "skills/security-scanning-security-hardening/SKILL.md"
+    },
+    {
+      "id": "security-scanning-security-sast",
+      "title": "security-scanning-security-sast",
+      "description": "Static Application Security Testing (SAST) for code vulnerability",
+      "sourcePath": "skills/security-scanning-security-sast/SKILL.md"
+    },
+    {
+      "id": "semgrep",
+      "title": "semgrep",
+      "description": "Run Semgrep static analysis scans and create custom detection rules. Use when scanning code with Semgrep, finding security vulnerabilities, or writing custom YAML rules.",
+      "sourcePath": "skills/semgrep/SKILL.md"
+    },
+    {
+      "id": "shellcheck-configuration",
+      "title": "shellcheck-configuration",
+      "description": "Master ShellCheck static analysis configuration and usage for shell script quality. Use when setting up linting infrastructure, fixing code issues, or ensuring script portability.",
+      "sourcePath": "skills/shellcheck-configuration/SKILL.md"
+    },
+    {
+      "id": "shodan-reconnaissance",
+      "title": "Shodan Reconnaissance and Pentesting",
+      "description": "This skill should be used when the user asks to \"search for exposed devices on the internet,\" \"perform Shodan reconnaissance,\" \"find vulnerable services using Shodan,\" \"scan IP ranges with Shodan,\"...",
+      "sourcePath": "skills/shodan-reconnaissance/SKILL.md"
+    },
+    {
+      "id": "smtp-penetration-testing",
+      "title": "SMTP Penetration Testing",
+      "description": "This skill should be used when the user asks to \"perform SMTP penetration testing\", \"enumerate email users\", \"test for open mail relays\", \"grab SMTP banners\", \"brute force email credentials\", or \"a...",
+      "sourcePath": "skills/smtp-penetration-testing/SKILL.md"
+    },
+    {
+      "id": "solidity-security",
+      "title": "solidity-security",
+      "description": "Master smart contract security best practices to prevent common vulnerabilities and implement secure Solidity patterns. Use when writing smart contracts, auditing existing contracts, or implementin...",
+      "sourcePath": "skills/solidity-security/SKILL.md"
+    },
+    {
+      "id": "sql-injection-testing",
+      "title": "SQL Injection Testing",
+      "description": "This skill should be used when the user asks to \"test for SQL injection vulnerabilities\", \"perform SQLi attacks\", \"bypass authentication using SQL injection\", \"extract database information through ...",
+      "sourcePath": "skills/sql-injection-testing/SKILL.md"
+    },
+    {
+      "id": "sqlmap-database-pentesting",
+      "title": "SQLMap Database Penetration Testing",
+      "description": "This skill should be used when the user asks to \"automate SQL injection testing,\" \"enumerate database structure,\" \"extract database credentials using sqlmap,\" \"dump tables and columns from a vulner...",
+      "sourcePath": "skills/sqlmap-database-pentesting/SKILL.md"
+    },
+    {
+      "id": "ssh-penetration-testing",
+      "title": "SSH Penetration Testing",
+      "description": "This skill should be used when the user asks to \"pentest SSH services\", \"enumerate SSH configurations\", \"brute force SSH credentials\", \"exploit SSH vulnerabilities\", \"perform SSH tunneling\", or \"au...",
+      "sourcePath": "skills/ssh-penetration-testing/SKILL.md"
+    },
+    {
+      "id": "stride-analysis-patterns",
+      "title": "stride-analysis-patterns",
+      "description": "Apply STRIDE methodology to systematically identify threats. Use when analyzing system security, conducting threat modeling sessions, or creating security documentation.",
+      "sourcePath": "skills/stride-analysis-patterns/SKILL.md"
+    },
+    {
+      "id": "threat-mitigation-mapping",
+      "title": "threat-mitigation-mapping",
+      "description": "Map identified threats to appropriate security controls and mitigations. Use when prioritizing security investments, creating remediation plans, or validating control effectiveness.",
+      "sourcePath": "skills/threat-mitigation-mapping/SKILL.md"
+    },
+    {
+      "id": "threat-modeling-expert",
+      "title": "threat-modeling-expert",
+      "description": "Expert in threat modeling methodologies, security architecture review, and risk assessment. Masters STRIDE, PASTA, attack trees, and security requirement extraction. Use for security architecture r...",
+      "sourcePath": "skills/threat-modeling-expert/SKILL.md"
+    },
+    {
+      "id": "top-web-vulnerabilities",
+      "title": "Top 100 Web Vulnerabilities Reference",
+      "description": "This skill should be used when the user asks to \"identify web application vulnerabilities\", \"explain common security flaws\", \"understand vulnerability categories\", \"learn about injection attacks\", ...",
+      "sourcePath": "skills/top-web-vulnerabilities/SKILL.md"
+    },
+    {
+      "id": "vulnerability-scanner",
+      "title": "vulnerability-scanner",
+      "description": "Advanced vulnerability analysis principles. OWASP 2025, Supply Chain Security, attack surface mapping, risk prioritization.",
+      "sourcePath": "skills/vulnerability-scanner/SKILL.md"
+    },
+    {
+      "id": "windows-privilege-escalation",
+      "title": "Windows Privilege Escalation",
+      "description": "This skill should be used when the user asks to \"escalate privileges on Windows,\" \"find Windows privesc vectors,\" \"enumerate Windows for privilege escalation,\" \"exploit Windows misconfigurations,\" ...",
+      "sourcePath": "skills/windows-privilege-escalation/SKILL.md"
+    },
+    {
+      "id": "wireshark-analysis",
+      "title": "Wireshark Network Traffic Analysis",
+      "description": "This skill should be used when the user asks to \"analyze network traffic with Wireshark\", \"capture packets for troubleshooting\", \"filter PCAP files\", \"follow TCP/UDP streams\", \"detect network anoma...",
+      "sourcePath": "skills/wireshark-analysis/SKILL.md"
+    },
+    {
+      "id": "wordpress-penetration-testing",
+      "title": "WordPress Penetration Testing",
+      "description": "This skill should be used when the user asks to \"pentest WordPress sites\", \"scan WordPress for vulnerabilities\", \"enumerate WordPress users, themes, or plugins\", \"exploit WordPress vulnerabilities\"...",
+      "sourcePath": "skills/wordpress-penetration-testing/SKILL.md"
+    },
+    {
+      "id": "xss-html-injection",
+      "title": "Cross-Site Scripting and HTML Injection Testing",
+      "description": "This skill should be used when the user asks to \"test for XSS vulnerabilities\", \"perform cross-site scripting attacks\", \"identify HTML injection flaws\", \"exploit client-side injection vulnerabiliti...",
+      "sourcePath": "skills/xss-html-injection/SKILL.md"
     }
   ],
   "commands": [
     {
-      "id": "scan-repo",
-      "title": "scan_repo Command",
-      "description": "Runs a security scan over the current repository.",
-      "sourcePath": "commands/scan-repo.md"
+      "id": "compliance-check",
+      "title": "Compliance Check",
+      "description": "Performs comprehensive compliance audits for GDPR, HIPAA, SOC2, PCI-DSS and provides implementation guidance.",
+      "sourcePath": "commands/compliance-check.md"
     },
     {
-      "id": "summarize-alerts",
-      "title": "summarize_alerts Command",
-      "description": "Summarizes a batch of alerts into a concise incident briefing.",
-      "sourcePath": "commands/summarize-alerts.md"
+      "id": "full-review",
+      "title": "Full Review",
+      "description": "Orchestrates comprehensive multi-dimensional code review using specialized review agents.",
+      "sourcePath": "commands/full-review.md"
     },
     {
-      "id": "review-ci-pipeline",
-      "title": "review_ci_pipeline Command",
-      "description": "Reviews CI configuration files for missing security checks.",
-      "sourcePath": "commands/review-ci-pipeline.md"
+      "id": "security-dependencies",
+      "title": "Security Dependencies",
+      "description": "Scans project dependencies across multiple ecosystems to identify vulnerabilities, assess risks, and provide automated remediation strategies.",
+      "sourcePath": "commands/security-dependencies.md"
     },
     {
-      "id": "analyze-logs",
-      "title": "analyze_logs Command",
-      "description": "Parses and analyzes logs for suspicious patterns.",
-      "sourcePath": "commands/analyze-logs.md"
+      "id": "security-hardening",
+      "title": "Security Hardening",
+      "description": "Implements comprehensive security hardening with defense-in-depth strategy through coordinated multi-agent orchestration.",
+      "sourcePath": "commands/security-hardening.md"
     },
     {
-      "id": "inspect-k8s-manifests",
-      "title": "inspect_k8s_manifests Command",
-      "description": "Inspects Kubernetes manifests for insecure defaults.",
-      "sourcePath": "commands/inspect-k8s-manifests.md"
+      "id": "security-sast",
+      "title": "Security SAST",
+      "description": "Static Application Security Testing (SAST) for code vulnerability analysis across multiple languages and frameworks.",
+      "sourcePath": "commands/security-sast.md"
     },
     {
-      "id": "cloud-config-diff",
-      "title": "cloud_config_diff Command",
-      "description": "Compares two versions of cloud config to highlight risky drift.",
-      "sourcePath": "commands/cloud-config-diff.md"
-    },
-    {
-      "id": "review-secrets-usage",
-      "title": "review_secrets_usage Command",
-      "description": "Reviews how secrets are fetched and used in code paths.",
-      "sourcePath": "commands/review-secrets-usage.md"
-    },
-    {
-      "id": "threat-model-session",
-      "title": "threat_model_session Command",
-      "description": "Guides a short, text-based threat-modeling session for a feature.",
-      "sourcePath": "commands/threat-model-session.md"
-    },
-    {
-      "id": "policy-gap-check",
-      "title": "policy_gap_check Command",
-      "description": "Checks implementation details against high-level security policy.",
-      "sourcePath": "commands/policy-gap-check.md"
-    },
-    {
-      "id": "triage-finding",
-      "title": "triage_finding Command",
-      "description": "Helps triage an individual security finding for impact and priority.",
-      "sourcePath": "commands/triage-finding.md"
-    },
-    {
-      "id": "prepare-incident-report",
-      "title": "prepare_incident_report Command",
-      "description": "Generates a structured incident report draft from raw notes.",
-      "sourcePath": "commands/prepare-incident-report.md"
+      "id": "xss-scan",
+      "title": "XSS Scan",
+      "description": "XSS vulnerability scanner for frontend code focusing on Cross-Site Scripting detection and prevention.",
+      "sourcePath": "commands/xss-scan.md"
     }
   ],
   "mcp": [
@@ -329,4 +683,3 @@
   "plugins": [],
   "hooks": []
 }
-

@@ -1,9 +1,14 @@
+import { PackageIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import {
+	Accordion,
+	AccordionContent,
+	AccordionItem,
+	AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
 	Dialog,
 	DialogContent,
@@ -11,7 +16,7 @@ import {
 	DialogHeader,
 	DialogTitle,
 } from "@/components/ui/dialog";
-import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { json } from "@codemirror/lang-json";
 import CodeMirror from "@uiw/react-codemirror";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
@@ -25,7 +30,10 @@ import {
 	useSecurityTemplates,
 	useUninstallSecurityTemplate,
 } from "@/lib/query";
-import { codeMirrorBasicSetup } from "@/lib/codemirror-config";
+import {
+	codeMirrorBasicSetup,
+	markdownExtensions,
+} from "@/lib/codemirror-config";
 
 // Static asset globs for pack contents
 const PACKS_BASE =
@@ -128,6 +136,19 @@ function sectionLabel(t: (key: string) => string, type: SecurityPackType): strin
 	}
 }
 
+function typeBadgeLabel(t: (key: string) => string, type: SecurityPackType): string {
+	switch (type) {
+		case "agent":
+			return "Agent";
+		case "skill":
+			return t("navigation.skills");
+		case "command":
+			return t("navigation.commands");
+		case "mcp":
+			return t("navigation.mcp");
+	}
+}
+
 function SecurityPacksSection(props: {
 	title: string;
 	items: TemplateItem[];
@@ -135,54 +156,59 @@ function SecurityPacksSection(props: {
 	onShowDetails: (item: TemplateItem, installed: boolean) => void;
 	onToggleInstall: (item: TemplateItem, installed: boolean) => void;
 }) {
+	const { t } = useTranslation();
 	if (props.items.length === 0) {
 		return null;
 	}
 
 	return (
 		<section className="space-y-3">
-			<div className="flex items-center justify-between">
-				<h3 className="text-sm font-semibold tracking-tight text-muted-foreground">
-					{props.title}
-				</h3>
-				<Separator className="flex-1 ml-3" />
-			</div>
-			<div className="space-y-2">
+			<h3 className="text-sm font-semibold tracking-tight text-muted-foreground">
+				{props.title}
+			</h3>
+			<Accordion type="multiple" className="space-y-2">
 				{props.items.map((item) => {
+					const itemKey = `${item.type}-${item.id}`;
 					const installed = props.installedMap.has(
 						`${item.type}:${item.id}`,
 					);
 
 					return (
-						<Card key={`${item.type}-${item.id}`} className="bg-card">
-							<CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-								<div>
-									<CardTitle className="text-sm font-medium">
-										{item.title}
-									</CardTitle>
-									<p className="text-xs text-muted-foreground">
-										{item.description}
-									</p>
+						<AccordionItem
+							key={itemKey}
+							value={itemKey}
+							className="bg-card border rounded-lg"
+						>
+							<AccordionTrigger className="hover:no-underline px-4 py-2 bg-card hover:bg-accent duration-150">
+								<div className="flex items-center justify-between gap-2 w-full">
+									<div className="flex items-center gap-2 flex-wrap">
+										<PackageIcon size={12} />
+										<span className="font-medium">{item.title}</span>
+										<Badge
+											variant={installed ? "success" : "outline"}
+										>
+											{installed ? "Installed" : "Not installed"}
+										</Badge>
+									</div>
+									<div className="flex items-center gap-2">
+										<Badge variant="secondary">
+											{typeBadgeLabel(t, item.type)}
+										</Badge>
+									</div>
 								</div>
-								<div className="flex items-center gap-2">
-									<Badge variant={installed ? "default" : "outline"}>
-										{installed ? "Installed" : "Not installed"}
-									</Badge>
-								</div>
-							</CardHeader>
-							<CardContent className="flex items-center justify-between pt-2 gap-2">
-								<div className="text-xs text-muted-foreground">
-									{item.type === "mcp" && (
-										<span>{(item as McpTemplate & { type: "mcp" }).serverName}</span>
-									)}
-								</div>
-								<div className="flex items-center gap-2">
+							</AccordionTrigger>
+							<AccordionContent className="pb-3 px-4">
+								<p className="text-sm text-muted-foreground mb-3">
+									{item.description}
+								</p>
+								<div className="flex gap-2">
 									<Button
 										size="sm"
 										variant="outline"
-										onClick={() =>
-											props.onShowDetails(item, installed)
-										}
+										onClick={(e) => {
+											e.stopPropagation();
+											props.onShowDetails(item, installed);
+										}}
 									>
 										{item.type === "mcp"
 											? "View config"
@@ -191,18 +217,19 @@ function SecurityPacksSection(props: {
 									<Button
 										size="sm"
 										variant={installed ? "outline" : "default"}
-										onClick={() =>
-											props.onToggleInstall(item, installed)
-										}
+										onClick={(e) => {
+											e.stopPropagation();
+											props.onToggleInstall(item, installed);
+										}}
 									>
 										{installed ? "Uninstall" : "Install"}
 									</Button>
 								</div>
-							</CardContent>
-						</Card>
+							</AccordionContent>
+						</AccordionItem>
 					);
 				})}
-			</div>
+			</Accordion>
 		</section>
 	);
 }
@@ -353,10 +380,15 @@ export function SecurityPacksPage() {
 				<p className="text-xs text-muted-foreground">
 					{current.item.description}
 				</p>
-				<div className="border rounded-md bg-card p-2">
-					<pre className="whitespace-pre-wrap text-xs text-foreground">
-						{markdown}
-					</pre>
+				<div className="rounded-lg overflow-hidden border">
+					<CodeMirror
+						value={markdown}
+						height="260px"
+						theme={codeMirrorTheme}
+						extensions={markdownExtensions}
+						basicSetup={codeMirrorBasicSetup}
+						readOnly
+					/>
 				</div>
 			</div>
 		);
@@ -444,7 +476,7 @@ export function SecurityPacksPage() {
 									<span>{detail.item.title}</span>
 									<Badge
 										variant={
-											detail.installed ? "default" : "outline"
+											detail.installed ? "success" : "outline"
 										}
 									>
 										{detail.installed
