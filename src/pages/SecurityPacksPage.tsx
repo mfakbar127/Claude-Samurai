@@ -85,19 +85,34 @@ function getSkillFilesForId(
 }
 
 function getMarkdownForTemplate(item: TemplateItem): string | undefined {
-	if (item.type === "mcp") return undefined;
-
-	const withSource = item as { sourcePath: string };
+	if (item.type === "mcp") {
+		return undefined;
+	}
 
 	if (item.type === "agent") {
-		return getAgentContent(withSource.sourcePath);
+		const agentItem = item as SecurityTemplates["agents"][number] & {
+			type: "agent";
+		};
+		return getAgentContent(agentItem.sourcePath);
 	}
+
 	if (item.type === "command") {
-		return getCommandContent(withSource.sourcePath);
+		const commandItem = item as SecurityTemplates["commands"][number] & {
+			type: "command";
+		};
+		return getCommandContent(commandItem.sourcePath);
 	}
+
 	// For skills, prefer SKILL.md content
-	const key = `${PACKS_BASE}${withSource.sourcePath}`;
-	return skillSources[key];
+	if (item.type === "skill") {
+		const skillItem = item as SecurityTemplates["skills"][number] & {
+			type: "skill";
+		};
+		const key = `${PACKS_BASE}${skillItem.sourcePath}`;
+		return skillSources[key];
+	}
+
+	return undefined;
 }
 
 function sectionLabel(t: (key: string) => string, type: SecurityPackType): string {
@@ -158,7 +173,7 @@ function SecurityPacksSection(props: {
 							<CardContent className="flex items-center justify-between pt-2 gap-2">
 								<div className="text-xs text-muted-foreground">
 									{item.type === "mcp" && (
-										<span>{(item as McpTemplate).serverName}</span>
+										<span>{(item as McpTemplate & { type: "mcp" }).serverName}</span>
 									)}
 								</div>
 								<div className="flex items-center gap-2">
@@ -222,73 +237,96 @@ export function SecurityPacksPage() {
 			type: "mcp" as const,
 		})) ?? [];
 
-	const selectedItems: TemplateItem[] =
-		selectedType === "agent"
-			? agentItems
-			: selectedType === "skill"
-				? skillItems
-				: selectedType === "command"
-					? commandItems
-					: mcpItems;
+	const itemsByType: Record<SecurityPackType, TemplateItem[]> = {
+		agent: agentItems,
+		skill: skillItems,
+		command: commandItems,
+		mcp: mcpItems,
+	};
 
-	function handleToggle(item: TemplateItem, installed: boolean) {
+	const selectedItems: TemplateItem[] = itemsByType[selectedType];
+
+	function handleInstallUninstall(
+		item: TemplateItem,
+		installed: boolean,
+		closeDialog?: boolean,
+	): void {
 		if (installed) {
+			const uninstallId =
+				item.type === "mcp" ? (item as McpTemplate).serverName : item.id;
 			uninstallMutation.mutate({
 				type: item.type,
-				id: item.type === "mcp" ? (item as McpTemplate).serverName : item.id,
+				id: uninstallId,
 			});
-			return;
-		}
-
-		if (item.type === "mcp") {
-			const m = item as McpTemplate;
-			installMutation.mutate({
-				type: "mcp",
-				id: m.id,
-				serverName: m.serverName,
-				serverConfig: m.serverConfig,
-			});
-			return;
-		}
-
-		if (item.type === "agent" || item.type === "command") {
-			const markdown = getMarkdownForTemplate(item);
-			if (!markdown) {
-				return;
+			if (closeDialog) {
+				setDetail(null);
 			}
-			installMutation.mutate({
-				type: item.type,
-				id: item.id,
-				content: markdown,
-			});
 			return;
 		}
 
-		if (item.type === "skill") {
-			const files = getSkillFilesForId(item.id);
-			if (files.length === 0) {
-				return;
+		switch (item.type) {
+			case "mcp": {
+				const mcpItem = item as McpTemplate;
+				installMutation.mutate({
+					type: "mcp",
+					id: mcpItem.id,
+					serverName: mcpItem.serverName,
+					serverConfig: mcpItem.serverConfig,
+				});
+				if (closeDialog) {
+					setDetail(null);
+				}
+				break;
 			}
-			installMutation.mutate({
-				type: "skill",
-				id: item.id,
-				skillFiles: files,
-			});
-			return;
+			case "agent":
+			case "command": {
+				const markdown = getMarkdownForTemplate(item);
+				if (!markdown) {
+					return;
+				}
+				installMutation.mutate({
+					type: item.type,
+					id: item.id,
+					content: markdown,
+				});
+				if (closeDialog) {
+					setDetail(null);
+				}
+				break;
+			}
+			case "skill": {
+				const files = getSkillFilesForId(item.id);
+				if (files.length === 0) {
+					return;
+				}
+				installMutation.mutate({
+					type: "skill",
+					id: item.id,
+					skillFiles: files,
+				});
+				if (closeDialog) {
+					setDetail(null);
+				}
+				break;
+			}
 		}
+	}
+
+	function handleToggle(item: TemplateItem, installed: boolean): void {
+		handleInstallUninstall(item, installed, false);
 	}
 
 	function renderDetailBody(current: DetailState) {
 		if (current.item.type === "mcp") {
-			const m = current.item as McpTemplate;
+			const mcpItem = current.item as McpTemplate & { type: "mcp" };
 			return (
 				<div className="space-y-3">
 					<p className="text-xs text-muted-foreground">
-						{m.description}
+						{mcpItem.description}
 					</p>
 					<div className="border rounded-md overflow-hidden">
 						<CodeMirror
-							value={JSON.stringify(m.serverConfig, null, 2)}
+							value={JSON.stringify(mcpItem.serverConfig, null, 2)}
 							height="260px"
 							theme={codeMirrorTheme}
 							extensions={[json()]}
@@ -324,57 +362,8 @@ export function SecurityPacksPage() {
 		);
 	}
 
-	function handleDetailPrimary(current: DetailState) {
-		if (current.installed) {
-			uninstallMutation.mutate({
-				type: current.item.type,
-				id:
-					current.item.type === "mcp"
-						? (current.item as McpTemplate).serverName
-						: current.item.id,
-			});
-			setDetail(null);
-			return;
-		}
-
-		if (current.item.type === "mcp") {
-			const m = current.item as McpTemplate;
-			installMutation.mutate({
-				type: "mcp",
-				id: m.id,
-				serverName: m.serverName,
-				serverConfig: m.serverConfig,
-			});
-			setDetail(null);
-			return;
-		}
-
-		if (current.item.type === "agent" || current.item.type === "command") {
-			const markdown = getMarkdownForTemplate(current.item);
-			if (!markdown) {
-				return;
-			}
-			installMutation.mutate({
-				type: current.item.type,
-				id: current.item.id,
-				content: markdown,
-			});
-			setDetail(null);
-			return;
-		}
-
-		if (current.item.type === "skill") {
-			const files = getSkillFilesForId(current.item.id);
-			if (files.length === 0) {
-				return;
-			}
-			installMutation.mutate({
-				type: "skill",
-				id: current.item.id,
-				skillFiles: files,
-			});
-			setDetail(null);
-		}
+	function handleDetailPrimary(current: DetailState): void {
+		handleInstallUninstall(current.item, current.installed, true);
 	}
 
 	return (

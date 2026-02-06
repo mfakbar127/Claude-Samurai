@@ -3899,6 +3899,31 @@ fn load_security_templates_from_assets() -> Result<SecurityTemplatesFile, String
         .map_err(|e| format!("Failed to parse security_templates.json: {}", e))
 }
 
+fn install_file_template(
+    home_dir: &std::path::Path,
+    template_type: &str,
+    id: &str,
+    content: String,
+    subdirectory: &str,
+) -> Result<std::path::PathBuf, String> {
+    let target_dir = home_dir.join(format!(".claude/{}", subdirectory));
+    ensure_dir(&target_dir, &format!(".claude/{} directory", subdirectory))?;
+    let target = target_dir.join(format!("{}.md", id));
+    
+    if target.exists() {
+        return Err(format!(
+            "{} file already exists: {}",
+            template_type,
+            target.display()
+        ));
+    }
+    
+    std::fs::write(&target, content)
+        .map_err(|e| format!("Failed to write {} file {}: {}", template_type, target.display(), e))?;
+    
+    Ok(target)
+}
+
 #[tauri::command]
 pub async fn get_security_templates() -> Result<SecurityTemplatesFile, String> {
     load_security_templates_from_assets()
@@ -3924,17 +3949,7 @@ pub async fn install_security_template(
             let content = payload
                 .content
                 .ok_or_else(|| "Agent install payload missing content".to_string())?;
-            let agents_dir = home_dir.join(".claude/agents");
-            ensure_dir(&agents_dir, ".claude/agents directory")?;
-            let target = agents_dir.join(format!("{}.md", payload.id));
-            if target.exists() {
-                return Err(format!(
-                    "Agent file already exists: {}",
-                    target.display()
-                ));
-            }
-            std::fs::write(&target, content)
-                .map_err(|e| format!("Failed to write agent file {}: {}", target.display(), e))?;
+            let target = install_file_template(&home_dir, "agent", &payload.id, content, "agents")?;
 
             manifest.items.push(InstalledSecurityPackItem {
                 template_type: "agent".to_string(),
@@ -3947,22 +3962,7 @@ pub async fn install_security_template(
             let content = payload
                 .content
                 .ok_or_else(|| "Command install payload missing content".to_string())?;
-            let commands_dir = home_dir.join(".claude/commands");
-            ensure_dir(&commands_dir, ".claude/commands directory")?;
-            let target = commands_dir.join(format!("{}.md", payload.id));
-            if target.exists() {
-                return Err(format!(
-                    "Command file already exists: {}",
-                    target.display()
-                ));
-            }
-            std::fs::write(&target, content).map_err(|e| {
-                format!(
-                    "Failed to write command file {}: {}",
-                    target.display(),
-                    e
-                )
-            })?;
+            let target = install_file_template(&home_dir, "command", &payload.id, content, "commands")?;
 
             manifest.items.push(InstalledSecurityPackItem {
                 template_type: "command".to_string(),
@@ -4052,7 +4052,7 @@ pub async fn uninstall_security_template(
 
     for item in manifest.items.into_iter() {
         if item.template_type == template_type && item.id == id {
-            match item.template_type.as_str() {
+            match template_type.as_str() {
                 "agent" | "command" => {
                     let path = std::path::PathBuf::from(&item.target_path);
                     if path.exists() {
@@ -4070,7 +4070,6 @@ pub async fn uninstall_security_template(
                     }
                 }
                 "mcp" => {
-                    // For MCP, id is the serverName we previously installed.
                     delete_global_mcp_server(item.id.clone()).await?;
                 }
                 _ => {
