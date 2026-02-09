@@ -931,7 +931,7 @@ export interface SkillFile {
 
 // Security Packs (Security Templates)
 
-export type SecurityPackType = "agent" | "command" | "skill" | "mcp";
+export type SecurityPackType = "agent" | "command" | "skill" | "mcp" | "marketplace";
 
 export interface AgentTemplate {
 	id: string;
@@ -962,11 +962,19 @@ export interface McpTemplate {
 	serverConfig: Record<string, any>;
 }
 
+export interface MarketplaceTemplate {
+	id: string;
+	name: string;
+	description: string;
+	link: string;
+}
+
 export interface SecurityTemplates {
 	agents: AgentTemplate[];
 	skills: SkillTemplate[];
 	commands: CommandTemplate[];
 	mcp: McpTemplate[];
+	marketplace: MarketplaceTemplate[];
 	plugins: unknown[];
 	hooks: unknown[];
 }
@@ -977,6 +985,19 @@ export interface InstalledSecurityPackItem {
 	targetPath: string;
 	installedAt: string;
 }
+
+export interface KnownMarketplaceSource {
+	source: string;
+	repo: string;
+}
+
+export interface KnownMarketplace {
+	source: KnownMarketplaceSource;
+	installLocation: string;
+	lastUpdated: string;
+}
+
+export type KnownMarketplaces = Record<string, KnownMarketplace>;
 
 export const useClaudeSkills = () =>
 	useQuery({
@@ -1088,6 +1109,12 @@ export const useInstalledSecurityTemplates = () =>
 		queryKey: ["installed-security-templates"],
 		queryFn: () =>
 			invoke<InstalledSecurityPackItem[]>("get_installed_security_templates"),
+	});
+
+export const useKnownMarketplaces = () =>
+	useQuery({
+		queryKey: ["known-marketplaces"],
+		queryFn: () => invoke<KnownMarketplaces>("read_known_marketplaces"),
 	});
 
 export const useInstallSecurityTemplate = () => {

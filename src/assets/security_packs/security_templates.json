@@ -680,6 +680,20 @@
       }
     }
   ],
+  "marketplace": [
+    {
+      "id": "trailofbits-skills",
+      "name": "trailofbits/skills",
+      "description": "Claude Code plugins from Trail of Bits for enhanced AI-assisted security analysis and development",
+      "link": "https://github.com/trailofbits/skills"
+    },
+    {
+      "id": "AgentSecOps-SecOpsAgentKit",
+      "name": "AgentSecOps/SecOpsAgentKit",
+      "description": "Security operations and DevSecOps toolbox for AI coding agents",
+      "link": "https://github.com/AgentSecOps/SecOpsAgentKit"
+      }
+  ],
   "plugins": [],
   "hooks": []
 }

@@ -1,11 +1,8 @@
 import {
 	ActivityIcon,
-	BellIcon,
 	BotIcon,
 	BrainIcon,
 	CpuIcon,
-	FileJsonIcon,
-	FolderIcon,
 	PackageIcon,
 	SettingsIcon,
 	SparklesIcon,
@@ -48,16 +45,18 @@ export function Layout() {
 			id: "core",
 			label: t("navigation.section.core", { defaultValue: "Core" }),
 			items: [
-				{
-					to: "/",
-					icon: FileJsonIcon,
-					label: t("navigation.configurations"),
-				},
-				{
-					to: "/projects",
-					icon: FolderIcon,
-					label: t("navigation.projects"),
-				},
+				// Hidden: Config files – uncomment to show in sidebar
+				// {
+				// 	to: "/",
+				// 	icon: FileJsonIcon,
+				// 	label: t("navigation.configurations"),
+				// },
+				// Hidden: Projects – uncomment to show in sidebar
+				// {
+				// 	to: "/projects",
+				// 	icon: FolderIcon,
+				// 	label: t("navigation.projects"),
+				// },
 				{
 					to: "/mcp",
 					icon: CpuIcon,
@@ -72,6 +71,13 @@ export function Layout() {
 					to: "/plugins",
 					icon: PackageIcon,
 					label: t("navigation.plugins"),
+				},
+				{
+					to: "/marketplace",
+					icon: PackageIcon,
+					label: t("navigation.marketplace", {
+						defaultValue: "Marketplace",
+					}),
 				},
 			],
 		},
@@ -110,11 +116,12 @@ export function Layout() {
 					icon: ShieldCheckIcon,
 					label: "Security Packs",
 				},
-				{
-					to: "/notification",
-					icon: BellIcon,
-					label: t("navigation.notifications"),
-				},
+				// Hidden: Notifications – uncomment to show in sidebar
+				// {
+				// 	to: "/notification",
+				// 	icon: BellIcon,
+				// 	label: t("navigation.notifications"),
+				// },
 				{
 					to: "/usage",
 					icon: ActivityIcon,
@@ -161,7 +168,7 @@ export function Layout() {
 													to={link.to}
 													className={({ isActive }) =>
 														cn(
-															"flex items-center gap-2 px-3 py-2 rounded-xl cursor-default select-none text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+															"flex items-center gap-2 px-3 py-2 rounded-xl cursor-default select-none text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
 															{
 																"bg-primary text-primary-foreground":
 																	isActive,

@@ -20,15 +20,19 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { json } from "@codemirror/lang-json";
 import CodeMirror from "@uiw/react-codemirror";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
+import { toast } from "sonner";
 import {
 	type InstalledSecurityPackItem,
 	type McpTemplate,
+	type MarketplaceTemplate,
+	type KnownMarketplaces,
 	type SecurityPackType,
 	type SecurityTemplates,
 	useInstallSecurityTemplate,
 	useInstalledSecurityTemplates,
 	useSecurityTemplates,
 	useUninstallSecurityTemplate,
+	useKnownMarketplaces,
 } from "@/lib/query";
 import {
 	codeMirrorBasicSetup,
@@ -54,15 +58,58 @@ const skillSources = import.meta.glob(
 	{ as: "raw", eager: true },
 ) as Record<string, string>;
 
+async function copyToClipboard(text: string): Promise<void> {
+	try {
+		if (navigator?.clipboard?.writeText) {
+			await navigator.clipboard.writeText(text);
+			toast.success("Command copied to clipboard");
+		}
+	} catch {
+		// ignore copy errors
+	}
+}
+
 type TemplateItem =
 	| (SecurityTemplates["agents"][number] & { type: "agent" })
 	| (SecurityTemplates["skills"][number] & { type: "skill" })
 	| (SecurityTemplates["commands"][number] & { type: "command" })
-	| (McpTemplate & { type: "mcp" });
+	| (McpTemplate & { type: "mcp" })
+	| (MarketplaceTemplate & { type: "marketplace" });
 
 interface DetailState {
 	item: TemplateItem;
 	installed: boolean;
+	marketplaceKey?: string;
+}
+
+function getMarketplaceKey(
+	marketplaces: KnownMarketplaces | undefined,
+	link: string,
+): string | undefined {
+	if (!marketplaces) {
+		return undefined;
+	}
+
+	try {
+		const url = new URL(link);
+		const segments = url.pathname.split("/").filter(Boolean);
+
+		if (segments.length < 2) {
+			return undefined;
+		}
+
+		const repoName = `${segments[0]}/${segments[1]}`;
+
+		for (const [key, value] of Object.entries(marketplaces)) {
+			if (value.source.repo === repoName) {
+				return key;
+			}
+		}
+	} catch {
+		// ignore URL parse errors
+	}
+
+	return undefined;
 }
 
 function getAgentContent(sourcePath: string): string | undefined {
@@ -90,6 +137,18 @@ function getSkillFilesForId(
 	}
 
 	return entries;
+}
+
+function getItemTitle(item: TemplateItem): string {
+	if ("title" in item && typeof item.title === "string") {
+		return item.title;
+	}
+
+	if ("name" in item && typeof (item as MarketplaceTemplate).name === "string") {
+		return (item as MarketplaceTemplate).name;
+	}
+
+	return item.id;
 }
 
 function getMarkdownForTemplate(item: TemplateItem): string | undefined {
@@ -133,6 +192,8 @@ function sectionLabel(t: (key: string) => string, type: SecurityPackType): strin
 			return t("navigation.commands");
 		case "mcp":
 			return t("navigation.mcp");
+		case "marketplace":
+			return "Marketplace";
 	}
 }
 
@@ -146,6 +207,8 @@ function typeBadgeLabel(t: (key: string) => string, type: SecurityPackType): str
 			return t("navigation.commands");
 		case "mcp":
 			return t("navigation.mcp");
+		case "marketplace":
+			return "Marketplace";
 	}
 }
 
@@ -153,6 +216,7 @@ function SecurityPacksSection(props: {
 	title: string;
 	items: TemplateItem[];
 	installedMap: Map<string, InstalledSecurityPackItem>;
+	marketplaceInstalledMap?: Map<string, boolean>;
 	onShowDetails: (item: TemplateItem, installed: boolean) => void;
 	onToggleInstall: (item: TemplateItem, installed: boolean) => void;
 }) {
@@ -169,9 +233,10 @@ function SecurityPacksSection(props: {
 			<Accordion type="multiple" className="space-y-2">
 				{props.items.map((item) => {
 					const itemKey = `${item.type}-${item.id}`;
-					const installed = props.installedMap.has(
-						`${item.type}:${item.id}`,
-					);
+					const installed =
+						item.type === "marketplace"
+							? props.marketplaceInstalledMap?.get(item.id) ?? false
+							: props.installedMap.has(`${item.type}:${item.id}`);
 
 					return (
 						<AccordionItem
@@ -183,7 +248,9 @@ function SecurityPacksSection(props: {
 								<div className="flex items-center justify-between gap-2 w-full">
 									<div className="flex items-center gap-2 flex-wrap">
 										<PackageIcon size={12} />
-										<span className="font-medium">{item.title}</span>
+										<span className="font-medium">
+											{getItemTitle(item)}
+										</span>
 										<Badge
 											variant={installed ? "success" : "outline"}
 										>
@@ -201,6 +268,24 @@ function SecurityPacksSection(props: {
 								<p className="text-sm text-muted-foreground mb-3">
 									{item.description}
 								</p>
+								{item.type === "marketplace" && "link" in item && (
+									<p className="text-xs mb-3">
+										<Button
+											variant="link"
+											size="sm"
+											className="h-auto p-0 text-xs text-primary underline underline-offset-2"
+											onClick={(event) => {
+												event.stopPropagation();
+												window.open(
+													(item as MarketplaceTemplate).link,
+													"_blank",
+												);
+											}}
+										>
+											More info
+										</Button>
+									</p>
+								)}
 								<div className="flex gap-2">
 									<Button
 										size="sm"
@@ -212,7 +297,9 @@ function SecurityPacksSection(props: {
 									>
 										{item.type === "mcp"
 											? "View config"
-											: "View markdown"}
+											: item.type === "marketplace"
+												? "View instructions"
+												: "View markdown"}
 									</Button>
 									<Button
 										size="sm"
@@ -238,6 +325,7 @@ export function SecurityPacksPage() {
 	const { t } = useTranslation();
 	const { data: templates } = useSecurityTemplates();
 	const { data: installedItems } = useInstalledSecurityTemplates();
+	const { data: knownMarketplaces } = useKnownMarketplaces();
 	const installMutation = useInstallSecurityTemplate();
 	const uninstallMutation = useUninstallSecurityTemplate();
 	const [detail, setDetail] = useState<DetailState | null>(null);
@@ -252,6 +340,34 @@ export function SecurityPacksPage() {
 		return map;
 	}, [installedItems]);
 
+	const marketplaceInstalledMap = useMemo(() => {
+		const map = new Map<string, boolean>();
+		const marketplaces: KnownMarketplaces | undefined = knownMarketplaces;
+
+		if (!templates?.marketplace || !marketplaces) {
+			return map;
+		}
+
+		const installedRepos = new Set<string>();
+		for (const value of Object.values(marketplaces)) {
+			installedRepos.add(value.source.repo);
+		}
+
+		for (const item of templates.marketplace) {
+			const marketplaceKey = getMarketplaceKey(marketplaces, item.link);
+
+			if (!marketplaceKey) {
+				map.set(item.id, false);
+				continue;
+			}
+
+			const repoName = marketplaces[marketplaceKey]?.source.repo;
+			map.set(item.id, repoName ? installedRepos.has(repoName) : false);
+		}
+
+		return map;
+	}, [knownMarketplaces, templates?.marketplace]);
+
 	const agentItems: TemplateItem[] =
 		templates?.agents.map((a) => ({ ...a, type: "agent" })) ?? [];
 	const skillItems: TemplateItem[] =
@@ -263,12 +379,16 @@ export function SecurityPacksPage() {
 			...m,
 			type: "mcp" as const,
 		})) ?? [];
+	const marketplaceItems: TemplateItem[] =
+		templates?.marketplace.map((m) => ({ ...m, type: "marketplace" as const })) ??
+		[];
 
 	const itemsByType: Record<SecurityPackType, TemplateItem[]> = {
 		agent: agentItems,
 		skill: skillItems,
 		command: commandItems,
 		mcp: mcpItems,
+		marketplace: marketplaceItems,
 	};
 
 	const selectedItems: TemplateItem[] = itemsByType[selectedType];
@@ -278,6 +398,13 @@ export function SecurityPacksPage() {
 		installed: boolean,
 		closeDialog?: boolean,
 	): void {
+		if (item.type === "marketplace") {
+			// For marketplace entries, we only show CLI instructions in the detail dialog.
+			const marketplaceKey = getMarketplaceKey(knownMarketplaces, item.link);
+
+			setDetail({ item, installed, marketplaceKey });
+			return;
+		}
 		if (installed) {
 			const uninstallId =
 				item.type === "mcp" ? (item as McpTemplate).serverName : item.id;
@@ -344,6 +471,58 @@ export function SecurityPacksPage() {
 	}
 
 	function renderDetailBody(current: DetailState) {
+		if (current.item.type === "marketplace") {
+			const marketplace = current.item as MarketplaceTemplate & {
+				type: "marketplace";
+			};
+			const displayName = marketplace.name;
+			const installCmd = `claude plugin marketplace add ${displayName}`;
+			const keyArg = current.marketplaceKey ?? displayName;
+			const uninstallCmd = `claude plugin marketplace remove ${keyArg}`;
+
+			return (
+				<div className="space-y-3">
+					<p className="text-xs text-muted-foreground">
+						{marketplace.description}
+					</p>
+					<div className="space-y-2">
+						<p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+							Install
+						</p>
+						<div className="flex items-center gap-2">
+							<div className="rounded-md bg-muted px-3 py-2 font-mono text-xs break-all flex-1 select-text">
+								{installCmd}
+							</div>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => void copyToClipboard(installCmd)}
+							>
+								Copy
+							</Button>
+						</div>
+					</div>
+					<div className="space-y-2">
+						<p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+							Uninstall
+						</p>
+						<div className="flex items-center gap-2">
+							<div className="rounded-md bg-muted px-3 py-2 font-mono text-xs break-all flex-1 select-text">
+								{uninstallCmd}
+							</div>
+							<Button
+								size="sm"
+								variant="outline"
+								onClick={() => void copyToClipboard(uninstallCmd)}
+							>
+								Copy
+							</Button>
+						</div>
+					</div>
+				</div>
+			);
+		}
+
 		if (current.item.type === "mcp") {
 			const mcpItem = current.item as McpTemplate & { type: "mcp" };
 			return (
@@ -395,6 +574,10 @@ export function SecurityPacksPage() {
 	}
 
 	function handleDetailPrimary(current: DetailState): void {
+		if (current.item.type === "marketplace") {
+			setDetail(null);
+			return;
+		}
 		handleInstallUninstall(current.item, current.installed, true);
 	}
 
@@ -418,38 +601,56 @@ export function SecurityPacksPage() {
 				</div>
 			</div>
 			<div className="p-3 border-b bg-muted/30">
-				<div className="flex gap-1">
+				<div className="flex gap-1 border border-border rounded-md p-1">
 					<Button
 						size="sm"
-						variant={selectedType === "agent" ? "secondary" : "ghost"}
+						variant={selectedType === "agent" ? "default" : "ghost"}
 						className="text-xs"
+						data-active={selectedType === "agent"}
+						aria-current={selectedType === "agent" ? "true" : undefined}
 						onClick={() => setSelectedType("agent")}
 					>
 						Agents
 					</Button>
 					<Button
 						size="sm"
-						variant={selectedType === "skill" ? "secondary" : "ghost"}
+						variant={selectedType === "skill" ? "default" : "ghost"}
 						className="text-xs"
+						data-active={selectedType === "skill"}
+						aria-current={selectedType === "skill" ? "true" : undefined}
 						onClick={() => setSelectedType("skill")}
 					>
 						{t("navigation.skills")}
 					</Button>
 					<Button
 						size="sm"
-						variant={selectedType === "command" ? "secondary" : "ghost"}
+						variant={selectedType === "command" ? "default" : "ghost"}
 						className="text-xs"
+						data-active={selectedType === "command"}
+						aria-current={selectedType === "command" ? "true" : undefined}
 						onClick={() => setSelectedType("command")}
 					>
 						{t("navigation.commands")}
 					</Button>
 					<Button
 						size="sm"
-						variant={selectedType === "mcp" ? "secondary" : "ghost"}
+						variant={selectedType === "mcp" ? "default" : "ghost"}
 						className="text-xs"
+						data-active={selectedType === "mcp"}
+						aria-current={selectedType === "mcp" ? "true" : undefined}
 						onClick={() => setSelectedType("mcp")}
 					>
 						{t("navigation.mcp")}
+					</Button>
+					<Button
+						size="sm"
+						variant={selectedType === "marketplace" ? "default" : "ghost"}
+						className="text-xs"
+						data-active={selectedType === "marketplace"}
+						aria-current={selectedType === "marketplace" ? "true" : undefined}
+						onClick={() => setSelectedType("marketplace")}
+					>
+						Marketplace
 					</Button>
 				</div>
 			</div>
@@ -459,6 +660,7 @@ export function SecurityPacksPage() {
 						title={sectionLabel(t, selectedType)}
 						items={selectedItems}
 						installedMap={installedMap}
+						marketplaceInstalledMap={marketplaceInstalledMap}
 						onShowDetails={(item, installed) =>
 							setDetail({ item, installed })
 						}
@@ -473,7 +675,7 @@ export function SecurityPacksPage() {
 						<>
 							<DialogHeader>
 								<DialogTitle className="flex items-center justify-between gap-2">
-									<span>{detail.item.title}</span>
+									<span>{getItemTitle(detail.item)}</span>
 									<Badge
 										variant={
 											detail.installed ? "success" : "outline"

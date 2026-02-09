@@ -2266,7 +2266,7 @@ pub async fn track(event: String, properties: serde_json::Value, app: tauri::App
 
     // Prepare request payload
     let mut payload = serde_json::json!({
-        "api_key": "phc_zlfJLeYsreOvash1EhL6IO6tnP00exm75OT50SjnNcy",
+        "api_key": "phc_7Mi50JHHNYoNL9yI2yn5fz30TiwAB8xWiqmMiwZg44k",
         "event": event,
         "properties": {
             "distinct_id": distinct_id,
@@ -2296,7 +2296,7 @@ pub async fn track(event: String, properties: serde_json::Value, app: tauri::App
     // Send request to PostHog
     let client = reqwest::Client::new();
     let response = client
-        .post("https://us.i.posthog.comxxxx/capture/")
+        .post("https://us.i.posthog.com/capture/")
         .header("Content-Type", "application/json")
         .json(&payload)
         .send()
@@ -3426,6 +3426,23 @@ pub struct InstalledPluginsFile {
     pub plugins: std::collections::HashMap<String, Vec<PluginInstallInfo>>,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MarketplaceSourceInfo {
+    pub source: String,
+    pub repo: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct KnownMarketplace {
+    pub source: MarketplaceSourceInfo,
+    #[serde(rename = "installLocation")]
+    pub install_location: String,
+    #[serde(rename = "lastUpdated")]
+    pub last_updated: String,
+}
+
+pub type KnownMarketplaces = std::collections::HashMap<String, KnownMarketplace>;
+
 #[derive(serde::Serialize, Clone)]
 pub struct PluginPackages {
     #[serde(rename = "hasAgents")]
@@ -3592,6 +3609,93 @@ pub async fn read_installed_plugins() -> Result<Vec<PluginInfo>, String> {
         }
     }
     
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn read_known_marketplaces() -> Result<KnownMarketplaces, String> {
+    use std::collections::HashMap;
+
+    let home_dir = home_dir()?;
+    let path = home_dir.join(".claude/plugins/known_marketplaces.json");
+
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let content = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read known_marketplaces.json: {}", e))?;
+
+    let raw_value: serde_json::Value = match serde_json::from_str(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(format!("Failed to parse known_marketplaces.json: {}", e));
+        }
+    };
+
+    let mut result: KnownMarketplaces = HashMap::new();
+
+    let Some(root_object) = raw_value.as_object() else {
+        return Ok(result);
+    };
+
+    for (key, entry_value) in root_object {
+        let Some(entry_object) = entry_value.as_object() else {
+            continue;
+        };
+
+        let Some(source_object) = entry_object
+            .get("source")
+            .and_then(|value| value.as_object())
+        else {
+            continue;
+        };
+
+        let Some(source_str) = source_object
+            .get("source")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+
+        let Some(repo_str) = source_object
+            .get("repo")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+
+        let Some(install_location) = entry_object
+            .get("installLocation")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+
+        let Some(last_updated) = entry_object
+            .get("lastUpdated")
+            .and_then(|value| value.as_str())
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+
+        result.insert(
+            key.clone(),
+            KnownMarketplace {
+                source: MarketplaceSourceInfo {
+                    source: source_str,
+                    repo: repo_str,
+                },
+                install_location,
+                last_updated,
+            },
+        );
+    }
+
     Ok(result)
 }
 
@@ -3820,6 +3924,7 @@ pub struct SecurityTemplatesFile {
     pub skills: Vec<SkillTemplate>,
     pub commands: Vec<CommandTemplate>,
     pub mcp: Vec<McpTemplate>,
+    pub marketplace: Vec<serde_json::Value>,
     // Reserved for future use – currently unused in phase 1
     pub plugins: Vec<Value>,
     pub hooks: Vec<Value>,

@@ -1,17 +1,17 @@
 import type React from "react";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { RouteWrapper } from "./components/RouteWrapper";
 import { AgentsPage } from "./pages/AgentsPage";
 import { CommandsPage } from "./pages/CommandsPage";
 import { ConfigEditorPage } from "./pages/ConfigEditorPage";
-import { ConfigSwitcherPage } from "./pages/ConfigSwitcherPage";
 import { HooksPage } from "./pages/HooksPage";
 import { MCPPage } from "./pages/MCPPage";
 import { MemoryPage } from "./pages/MemoryPage";
 import { SkillsPage } from "./pages/SkillsPage";
 import { NotificationPage } from "./pages/NotificationPage";
 import { PluginsPage } from "./pages/PluginsPage";
+import { MarketplacePage } from "./pages/MarketplacePage";
 import { SecurityPacksPage } from "./pages/SecurityPacksPage";
 import { Detail } from "./pages/projects/Detail";
 import { ProjectsLayout } from "./pages/projects/Layout";
@@ -30,7 +30,7 @@ const router = createBrowserRouter([
 		children: [
 			{
 				index: true,
-				element: wrapRoute(<ConfigSwitcherPage />),
+				element: <Navigate to="mcp" replace />,
 			},
 			{
 				path: "edit/:storeId",
@@ -75,6 +75,10 @@ const router = createBrowserRouter([
 			{
 				path: "plugins",
 				element: wrapRoute(<PluginsPage />),
+			},
+			{
+				path: "marketplace",
+				element: wrapRoute(<MarketplacePage />),
 			},
 			{
 				path: "security-packs",

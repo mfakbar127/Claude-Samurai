@@ -276,6 +276,7 @@ pub fn run() {
             read_plugin_commands,
             read_plugin_agents,
             list_claude_skills,
+            read_known_marketplaces,
             toggle_claude_skill,
             write_claude_skill,
             delete_claude_skill,
