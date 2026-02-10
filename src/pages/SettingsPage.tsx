@@ -4,7 +4,7 @@ import { DownloadIcon, ExternalLinkIcon, RotateCwIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FaXTwitter } from "react-icons/fa6";
+import { FaXTwitter, FaLinkedin } from "react-icons/fa6";
 import { Button } from "@/components/ui/button";
 import {
 	Select,
@@ -141,7 +141,7 @@ export function SettingsPage() {
 					<div className="flex items-center gap-2">
 						<Button
 							onClick={(_) => {
-								openUrl("https://github.com/djyde/ccmate-release/issues");
+								openUrl("https://github.com/mfakbar127/Claude-Samurai/issues");
 							}}
 							variant="outline"
 							size="sm"
@@ -153,13 +153,13 @@ export function SettingsPage() {
 
 						<Button
 							onClick={(_) => {
-								openUrl("https://x.com/randyloop");
+								openUrl("https://www.linkedin.com/in/mf-akbar/");
 							}}
 							variant="ghost"
 							size="sm"
 							className="text-sm"
 						>
-							<FaXTwitter />
+							<FaLinkedin />
 						</Button>
 					</div>
 				</div>
