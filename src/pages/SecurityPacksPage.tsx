@@ -20,6 +20,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { json } from "@codemirror/lang-json";
 import CodeMirror from "@uiw/react-codemirror";
 import { useCodeMirrorTheme } from "@/lib/use-codemirror-theme";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { toast } from "sonner";
 import {
 	type InstalledSecurityPackItem,
@@ -276,10 +277,7 @@ function SecurityPacksSection(props: {
 											className="h-auto p-0 text-xs text-primary underline underline-offset-2"
 											onClick={(event) => {
 												event.stopPropagation();
-												window.open(
-													(item as MarketplaceTemplate).link,
-													"_blank",
-												);
+												void openUrl((item as MarketplaceTemplate).link);
 											}}
 										>
 											More info

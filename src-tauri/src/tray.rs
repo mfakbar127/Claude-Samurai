@@ -129,22 +129,22 @@ pub async fn build_tray_menu<R: Runtime>(
                 builder = builder.item(&configs_label);
 
                 // Add config items
-                for store in stores {
-                    let prefix = if store.using { "✓ " } else { "  " };
-                    let label = format!("{}{}", prefix, store.title);
+                // for store in stores {
+                //     let prefix = if store.using { "✓ " } else { "  " };
+                //     let label = format!("{}{}", prefix, store.title);
 
-                    println!(
-                        "  {} Config: {}",
-                        if store.using { "✓" } else { " " },
-                        store.title
-                    );
+                //     println!(
+                //         "  {} Config: {}",
+                //         if store.using { "✓" } else { " " },
+                //         store.title
+                //     );
 
-                    let item =
-                        MenuItemBuilder::with_id(format!("config_{}", store.id), label)
-                            .build(app)?;
+                //     let item =
+                //         MenuItemBuilder::with_id(format!("config_{}", store.id), label)
+                //             .build(app)?;
 
-                    builder = builder.item(&item);
-                }
+                //     builder = builder.item(&item);
+                // }
 
                 // Add separator
                 let separator = tauri::menu::PredefinedMenuItem::separator(app)?;
